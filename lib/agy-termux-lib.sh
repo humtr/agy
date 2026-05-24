@@ -55,16 +55,20 @@ agy_write_state() {
 
 agy_runtime_command() {
     local preload_env=()
+    local cert_dir_env=()
     if [ "${AGY_ENABLE_TCMALLOC_SHIM:-0}" = "1" ] || [ "${TCMALLOC_POLICY:-gated}" = "default" ]; then
         if [ -f "$AGY_TCMALLOC_SHIM" ]; then
             preload_env=("LD_PRELOAD=$AGY_TCMALLOC_SHIM")
         fi
     fi
+    if [ -d "$AGY_CERT_DIR" ]; then
+        cert_dir_env=("SSL_CERT_DIR=$AGY_CERT_DIR")
+    fi
     env -u LD_PRELOAD -u LD_LIBRARY_PATH \
         GODEBUG="${GODEBUG:-netdns=go}" \
         SSL_CERT_FILE="$AGY_CERT_FILE" \
-        SSL_CERT_DIR="$AGY_CERT_DIR" \
         LD_LIBRARY_PATH="$AGY_SHIM_DIR:$AGY_GLIBC_LIB" \
+        "${cert_dir_env[@]}" \
         "${preload_env[@]}" \
         "$@"
 }
