@@ -54,9 +54,11 @@ AGY_PASSTHROUGH_TERMUX=1 agy termux
 The main reliability mechanism is:
 
 1. Preflight consistency check.
-2. Transactional repatch if raw/patched/state/wrapper validation fails.
-3. Patched runtime execution only after validation.
-4. Postflight raw-hash detection.
+2. Wrapper-controlled `agy update` check before normal commands.
+3. Transactional repatch if raw/patched/state/wrapper validation fails or the
+   updater changes the raw binary.
+4. Patched runtime execution only after validation.
+5. Postflight raw-hash detection.
 
 Preflight checks:
 
@@ -77,6 +79,16 @@ then atomically moves the candidate into place.
 
 If the official updater replaces `~/.local/bin/agy`, the next wrapper invocation
 detects the raw hash mismatch and rebuilds `agy.va39` before normal execution.
+For normal commands, the wrapper checks the official Linux ARM64 manifest first.
+If the manifest version is newer than the current patched runtime, the wrapper
+downloads the manifest tarball, verifies its `sha512`, replaces only the raw
+`~/.local/bin/agy`, and immediately rebuilds `agy.va39` before continuing.
+
+Manual `agy update` is still allowed. If that command changes the raw binary,
+the wrapper performs the same manifest/tarball update broker instead of running
+the patched binary's built-in updater. This is intentional: running the built-in
+updater from `agy.va39` can update the currently executed patched path rather
+than the preserved raw path.
 
 Known limitation: if the patched process internally installs a new raw binary
 and immediately `execve`s the absolute raw path `~/.local/bin/agy` inside the
@@ -86,7 +98,12 @@ repairs before running.
 
 No safe official environment variable, config option, or flag for disabling
 Antigravity auto-update was confirmed from local binary inspection. This wrapper
-therefore uses detection and repair rather than unsafe `execve` hooks.
+therefore uses update-before-run, verified tarball replacement, detection, and
+repair rather than unsafe `execve` hooks.
+
+Termux DNS is handled by binding `$PREFIX/etc/resolv.conf` over `/etc/resolv.conf`
+for the glibc `agy` runtime with `proot`. This prevents Go's pure resolver from
+using Android-side localhost DNS entries such as `[::1]:53`.
 
 ## Diagnostic Cases
 

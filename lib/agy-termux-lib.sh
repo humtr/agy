@@ -16,8 +16,10 @@ AGY_GLIBC_LIB="${AGY_GLIBC_LIB:-$AGY_PREFIX/glibc/lib}"
 AGY_SHIM_DIR="${AGY_SHIM_DIR:-$AGY_HOME/.local/glibc-shim}"
 AGY_CERT_FILE="${AGY_CERT_FILE:-$AGY_PREFIX/etc/tls/cert.pem}"
 AGY_CERT_DIR="${AGY_CERT_DIR:-$AGY_PREFIX/etc/tls/certs}"
+AGY_RESOLV_CONF="${AGY_RESOLV_CONF:-$AGY_PREFIX/etc/resolv.conf}"
 AGY_TCMALLOC_SHIM="${AGY_TCMALLOC_SHIM:-$AGY_SHIM_DIR/tcmalloc_fix.so}"
 AGY_TCMALLOC_POLICY="${AGY_TCMALLOC_POLICY:-gated}"
+AGY_MANIFEST_URL="${AGY_MANIFEST_URL:-https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_arm64.json}"
 
 agy_sha256() {
     sha256sum "$1" 2>/dev/null | awk '{print $1}'
@@ -56,6 +58,7 @@ agy_write_state() {
 agy_runtime_command() {
     local preload_env=()
     local cert_dir_env=()
+    local runtime_env=()
     if [ "${AGY_ENABLE_TCMALLOC_SHIM:-0}" = "1" ] || [ "${TCMALLOC_POLICY:-gated}" = "default" ]; then
         if [ -f "$AGY_TCMALLOC_SHIM" ]; then
             preload_env=("LD_PRELOAD=$AGY_TCMALLOC_SHIM")
@@ -64,13 +67,17 @@ agy_runtime_command() {
     if [ -d "$AGY_CERT_DIR" ]; then
         cert_dir_env=("SSL_CERT_DIR=$AGY_CERT_DIR")
     fi
-    env -u LD_PRELOAD -u LD_LIBRARY_PATH \
+    runtime_env=(env -u LD_PRELOAD -u LD_LIBRARY_PATH \
         GODEBUG="${GODEBUG:-netdns=go}" \
         SSL_CERT_FILE="$AGY_CERT_FILE" \
         LD_LIBRARY_PATH="$AGY_SHIM_DIR:$AGY_GLIBC_LIB" \
         "${cert_dir_env[@]}" \
-        "${preload_env[@]}" \
-        "$@"
+        "${preload_env[@]}")
+    if command -v proot >/dev/null 2>&1 && [ -f "$AGY_RESOLV_CONF" ]; then
+        proot -b "$AGY_RESOLV_CONF:/etc/resolv.conf" "${runtime_env[@]}" "$@"
+    else
+        "${runtime_env[@]}" "$@"
+    fi
 }
 
 agy_run_patched() {
@@ -294,6 +301,186 @@ agy_preflight() {
     fi
 }
 
+agy_current_version() {
+    agy_run_candidate "$AGY_PATCHED" --version 2>/dev/null | sed -n '1p'
+}
+
+agy_manifest_version() {
+    local manifest="$1"
+    python3 - "$manifest" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+print(json.loads(Path(sys.argv[1]).read_text()).get("version", ""))
+PY
+}
+
+agy_manifest_field() {
+    local manifest="$1"
+    local field="$2"
+    python3 - "$manifest" "$field" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+print(json.loads(Path(sys.argv[1]).read_text()).get(sys.argv[2], ""))
+PY
+}
+
+agy_update_broker() {
+    local mode="${1:-auto}"
+    local before after current latest tmp_dir manifest status
+
+    [ -x "$AGY_PATCHED" ] || return 0
+    tmp_dir=$(mktemp -d "$AGY_STATE_DIR/update.XXXXXX") || return 1
+    manifest="$tmp_dir/manifest.json"
+    before=$(agy_sha256 "$AGY_RAW")
+    current=$(agy_current_version)
+
+    printf 'agy wrapper: checking for upstream update...\n' >&2
+    set +e
+    curl -fsSL "$AGY_MANIFEST_URL" >"$manifest" 2>"$tmp_dir/update.log"
+    status=$?
+    set -e
+    if [ "$status" -ne 0 ]; then
+        if [ "$mode" = "explicit" ]; then
+            agy_make_case "$status" "$tmp_dir/update.log" >/dev/null
+            rm -rf "$tmp_dir"
+            return "$status"
+        fi
+        case_dir=$(agy_make_case "$status" "$tmp_dir/update.log")
+        printf 'agy wrapper: update check failed; continuing with current patched runtime.\n' >&2
+        printf 'Update diagnostic case: %s\n' "$case_dir" >&2
+        rm -rf "$tmp_dir"
+        return 0
+    fi
+
+    latest=$(agy_manifest_version "$manifest")
+    if [ -z "$latest" ]; then
+        printf 'agy wrapper: update manifest did not contain a version.\n' >"$tmp_dir/update.log"
+        if [ "$mode" = "explicit" ]; then
+            agy_make_case 73 "$tmp_dir/update.log" >/dev/null
+            rm -rf "$tmp_dir"
+            return 73
+        fi
+        case_dir=$(agy_make_case 73 "$tmp_dir/update.log")
+        printf 'agy wrapper: update check failed; continuing with current patched runtime.\n' >&2
+        printf 'Update diagnostic case: %s\n' "$case_dir" >&2
+        rm -rf "$tmp_dir"
+        return 0
+    fi
+
+    if [ "$current" = "$latest" ]; then
+        printf 'agy wrapper: already on upstream version %s.\n' "$latest" >&2
+        rm -rf "$tmp_dir"
+        return 0
+    fi
+
+    local url expected_sha actual_sha extracted raw_backup
+    url=$(agy_manifest_field "$manifest" url)
+    expected_sha=$(agy_manifest_field "$manifest" sha512)
+    if [ -z "$url" ] || [ -z "$expected_sha" ]; then
+        printf 'agy wrapper: update manifest missing url or sha512.\n' >"$tmp_dir/update.log"
+        if [ "$mode" = "explicit" ]; then
+            agy_make_case 74 "$tmp_dir/update.log" >/dev/null
+            rm -rf "$tmp_dir"
+            return 74
+        fi
+        case_dir=$(agy_make_case 74 "$tmp_dir/update.log")
+        printf 'agy wrapper: update check failed; continuing with current patched runtime.\n' >&2
+        printf 'Update diagnostic case: %s\n' "$case_dir" >&2
+        rm -rf "$tmp_dir"
+        return 0
+    fi
+
+    printf 'agy wrapper: updating raw agy %s -> %s...\n' "${current:-unknown}" "$latest" >&2
+    set +e
+    curl -fsSL "$url" >"$tmp_dir/agy.tgz" 2>"$tmp_dir/update.log"
+    status=$?
+    set -e
+    if [ "$status" -ne 0 ]; then
+        if [ "$mode" = "explicit" ]; then
+            agy_make_case "$status" "$tmp_dir/update.log" >/dev/null
+            rm -rf "$tmp_dir"
+            return "$status"
+        fi
+        case_dir=$(agy_make_case "$status" "$tmp_dir/update.log")
+        printf 'agy wrapper: update download failed; continuing with current patched runtime.\n' >&2
+        printf 'Update diagnostic case: %s\n' "$case_dir" >&2
+        rm -rf "$tmp_dir"
+        return 0
+    fi
+
+    actual_sha=$(sha512sum "$tmp_dir/agy.tgz" | awk '{print $1}')
+    if [ "$actual_sha" != "$expected_sha" ]; then
+        printf 'sha512 mismatch\nexpected=%s\nactual=%s\n' "$expected_sha" "$actual_sha" >"$tmp_dir/update.log"
+        if [ "$mode" = "explicit" ]; then
+            agy_make_case 75 "$tmp_dir/update.log" >/dev/null
+            rm -rf "$tmp_dir"
+            return 75
+        fi
+        case_dir=$(agy_make_case 75 "$tmp_dir/update.log")
+        printf 'agy wrapper: update verification failed; continuing with current patched runtime.\n' >&2
+        printf 'Update diagnostic case: %s\n' "$case_dir" >&2
+        rm -rf "$tmp_dir"
+        return 0
+    fi
+
+    mkdir -p "$tmp_dir/extract"
+    set +e
+    tar -xzf "$tmp_dir/agy.tgz" -C "$tmp_dir/extract" >>"$tmp_dir/update.log" 2>&1
+    status=$?
+    set -e
+    if [ "$status" -ne 0 ]; then
+        if [ "$mode" = "explicit" ]; then
+            agy_make_case "$status" "$tmp_dir/update.log" >/dev/null
+            rm -rf "$tmp_dir"
+            return "$status"
+        fi
+        case_dir=$(agy_make_case "$status" "$tmp_dir/update.log")
+        printf 'agy wrapper: update extract failed; continuing with current patched runtime.\n' >&2
+        printf 'Update diagnostic case: %s\n' "$case_dir" >&2
+        rm -rf "$tmp_dir"
+        return 0
+    fi
+
+    extracted="$tmp_dir/extract/antigravity"
+    if [ ! -s "$extracted" ]; then
+        printf 'expected extracted antigravity binary not found\n' >"$tmp_dir/update.log"
+        if [ "$mode" = "explicit" ]; then
+            agy_make_case 76 "$tmp_dir/update.log" >/dev/null
+            rm -rf "$tmp_dir"
+            return 76
+        fi
+        case_dir=$(agy_make_case 76 "$tmp_dir/update.log")
+        printf 'agy wrapper: update archive layout unsupported; continuing with current patched runtime.\n' >&2
+        printf 'Update diagnostic case: %s\n' "$case_dir" >&2
+        rm -rf "$tmp_dir"
+        return 0
+    fi
+
+    chmod 755 "$extracted"
+    raw_backup="$AGY_STATE_DIR/agy.raw.$(date +%Y%m%d-%H%M%S).bak"
+    cp -p "$AGY_RAW" "$raw_backup"
+    mv "$extracted" "$AGY_RAW"
+    chmod 755 "$AGY_RAW"
+
+    after=$(agy_sha256 "$AGY_RAW")
+    if [ -n "$before" ] && [ -n "$after" ] && [ "$before" != "$after" ]; then
+        agy_mark_raw_changed
+    fi
+    printf 'agy wrapper: rebuilding patched runtime after update check...\n' >&2
+    agy_repair wrapper-update
+    rm -rf "$tmp_dir"
+}
+
+agy_auto_update() {
+    [ "${AGY_SKIP_AUTO_UPDATE:-0}" = "1" ] && return 0
+    [ "${1:-}" = "auth" ] && return 0
+    agy_update_broker auto
+}
+
 agy_mark_raw_changed() {
     agy_load_state
     local raw_hash
@@ -321,11 +508,13 @@ agy_status() {
     printf 'glibc loader: %s (%s)\n' "$AGY_LOADER" "$([ -x "$AGY_LOADER" ] && echo ok || echo missing)"
     printf 'SSL_CERT_FILE: %s (%s)\n' "$AGY_CERT_FILE" "$([ -f "$AGY_CERT_FILE" ] && echo ok || echo missing)"
     printf 'SSL_CERT_DIR: %s (%s)\n' "$AGY_CERT_DIR" "$([ -d "$AGY_CERT_DIR" ] && echo ok || echo missing)"
+    printf 'resolv.conf bind source: %s (%s)\n' "$AGY_RESOLV_CONF" "$([ -f "$AGY_RESOLV_CONF" ] && echo ok || echo missing)"
+    printf 'proot DNS bind: %s\n' "$(command -v proot >/dev/null 2>&1 && echo enabled || echo unavailable)"
     printf 'glibc hosts: %s\n' "$AGY_PREFIX/glibc/etc/hosts $([ -f "$AGY_PREFIX/glibc/etc/hosts" ] && echo present || echo missing)"
     printf 'glibc nsswitch: %s\n' "$AGY_PREFIX/glibc/etc/nsswitch.conf $([ -f "$AGY_PREFIX/glibc/etc/nsswitch.conf" ] && echo present || echo missing)"
     printf 'tcmalloc shim policy: %s\n' "${TCMALLOC_POLICY:-gated}"
     printf 'tcmalloc shim file: %s (%s)\n' "$AGY_TCMALLOC_SHIM" "$([ -f "$AGY_TCMALLOC_SHIM" ] && echo present || echo missing)"
-    printf 'auto-update disable: not found\n'
+    printf 'update broker: manifest sha512 verified tarball replacement\n'
     printf 'last diagnostic case: %s\n' "$(agy_last_case_path)"
 }
 
@@ -351,7 +540,17 @@ agy_send_prompt() {
         printf '%s missing. Prompt path: %s\n' "$tool" "$prompt"
         return 1
     fi
-    "$tool" <"$prompt"
+    case "$tool" in
+        codex)
+            codex exec "$(cat "$prompt")"
+            ;;
+        gemini)
+            gemini <"$prompt"
+            ;;
+        *)
+            "$tool" <"$prompt"
+            ;;
+    esac
 }
 
 agy_termux_menu() {
@@ -390,6 +589,14 @@ agy_main() {
         return 0
     fi
 
+    if [ "${1:-}" = "update" ]; then
+        agy_preflight || return $?
+        agy_update_broker explicit
+        return $?
+    fi
+
+    agy_preflight || return $?
+    agy_auto_update "${1:-}" || return $?
     agy_preflight || return $?
     local before after temp_raw exit_code case_dir
     before=$(agy_sha256 "$AGY_RAW")
@@ -403,7 +610,8 @@ agy_main() {
     after=$(agy_sha256 "$AGY_RAW")
     if [ -n "$before" ] && [ -n "$after" ] && [ "$before" != "$after" ]; then
         agy_mark_raw_changed
-        printf 'Raw agy changed during execution. Next invocation will repatch before running.\n' >&2
+        printf 'Raw agy changed during execution. Rebuilding patched runtime now...\n' >&2
+        agy_repair postflight-update
     fi
     if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 130 ]; then
         case_dir=$(agy_make_case "$exit_code" "$temp_raw")
