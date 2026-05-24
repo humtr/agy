@@ -1,0 +1,19 @@
+# Local binary/runtime artifacts. The official and patched agy binaries are not
+# source artifacts and may contain device-specific state or large vendor code.
+backups/
+*.bak
+*.so
+agy
+agy.va39
+agy-va39
+
+# Diagnostic cases can contain raw stderr or environment evidence. Keep them
+# local unless a redacted excerpt is intentionally copied into docs.
+.local/
+doctor/
+*.log
+
+# Python/editor noise.
+__pycache__/
+*.pyc
+.DS_Store
