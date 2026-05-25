@@ -154,6 +154,20 @@ agy runtime and must not leak into normal Termux/Bionic tools.
 
 ## Setup And Repair
 
+Fresh install after cloning the repository:
+
+```bash
+cd ~/prj/agy
+bash bin/setup_agy_termux.sh --install
+```
+
+This installs `~/bin/agy` and `~/.local/bin/agy-va39`, downloads the current raw
+Linux ARM64 `agy` tarball through the wrapper-managed broker, verifies its
+`sha512`, and builds `~/.local/bin/agy.va39`.
+The generated wrappers record the repository path used during setup, so the repo
+does not have to be hardcoded to `~/prj/agy`; that remains the expected default
+location.
+
 Status:
 
 ```bash
@@ -165,6 +179,8 @@ Install wrappers:
 ```bash
 bash bin/setup_agy_termux.sh --install-wrappers
 ```
+
+This only installs wrappers and does not download or repair binaries.
 
 Rebuild patched runtime:
 

@@ -7,11 +7,12 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
     cat <<'EOF'
-Usage: bash bin/setup_agy_termux.sh [--status|--repair|--install-wrappers|--init-state]
+Usage: bash bin/setup_agy_termux.sh [--install|--status|--repair|--install-wrappers|--init-state]
 
 Default action: --status
 
 Actions:
+  --install          Install wrappers, download/update raw agy, and build agy.va39.
   --status           Print current wrapper/runtime status.
   --repair           Transactionally rebuild ~/.local/bin/agy.va39 from raw agy.
   --install-wrappers Install ~/bin/agy and ~/.local/bin/agy-va39 wrappers.
@@ -25,22 +26,22 @@ EOF
 install_wrappers() {
     mkdir -p "$(dirname "$AGY_USER_WRAPPER")" "$(dirname "$AGY_EXEC_WRAPPER")" "$AGY_STATE_DIR"
 
-    cat >"$AGY_USER_WRAPPER" <<'EOF'
+    cat >"$AGY_USER_WRAPPER" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT="$HOME/prj/agy"
+ROOT="$ROOT_DIR"
 # shellcheck disable=SC1091
-. "$ROOT/lib/agy-termux-lib.sh"
-agy_main "$@"
+. "\$ROOT/lib/agy-termux-lib.sh"
+agy_main "\$@"
 EOF
 
-    cat >"$AGY_EXEC_WRAPPER" <<'EOF'
+    cat >"$AGY_EXEC_WRAPPER" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT="$HOME/prj/agy"
+ROOT="$ROOT_DIR"
 # shellcheck disable=SC1091
-. "$ROOT/lib/agy-termux-lib.sh"
-agy_run_patched "$@"
+. "\$ROOT/lib/agy-termux-lib.sh"
+agy_run_patched "\$@"
 EOF
 
     chmod 755 "$AGY_USER_WRAPPER" "$AGY_EXEC_WRAPPER"
@@ -79,6 +80,10 @@ init_state() {
 
 action="${1:---status}"
 case "$action" in
+    --install)
+        install_wrappers
+        agy_update_broker explicit
+        ;;
     --status)
         agy_status
         ;;

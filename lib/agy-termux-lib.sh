@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -u
 
+AGY_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AGY_PROJECT_ROOT="${AGY_PROJECT_ROOT:-$(cd "$AGY_LIB_DIR/.." && pwd)}"
 AGY_HOME="${AGY_HOME:-$HOME}"
 AGY_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 AGY_RAW="${AGY_RAW:-$AGY_HOME/.local/bin/agy}"
@@ -10,7 +12,7 @@ AGY_USER_WRAPPER="${AGY_USER_WRAPPER:-$AGY_HOME/bin/agy}"
 AGY_STATE_DIR="${AGY_STATE_DIR:-$AGY_HOME/.local/share/agy-termux}"
 AGY_STATE_FILE="${AGY_STATE_FILE:-$AGY_STATE_DIR/state.env}"
 AGY_DOCTOR_BASE="${AGY_DOCTOR_BASE:-$AGY_STATE_DIR/doctor}"
-AGY_PATCH_SCRIPT="${AGY_PATCH_SCRIPT:-$AGY_HOME/prj/agy/patches/patch_agy.py}"
+AGY_PATCH_SCRIPT="${AGY_PATCH_SCRIPT:-$AGY_PROJECT_ROOT/patches/patch_agy.py}"
 AGY_LOADER="${AGY_LOADER:-$AGY_PREFIX/glibc/lib/ld-linux-aarch64.so.1}"
 AGY_GLIBC_LIB="${AGY_GLIBC_LIB:-$AGY_PREFIX/glibc/lib}"
 AGY_SHIM_DIR="${AGY_SHIM_DIR:-$AGY_HOME/.local/glibc-shim}"
@@ -22,6 +24,7 @@ AGY_TCMALLOC_POLICY="${AGY_TCMALLOC_POLICY:-gated}"
 AGY_MANIFEST_URL="${AGY_MANIFEST_URL:-https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_arm64.json}"
 
 agy_sha256() {
+    [ -f "$1" ] || return 0
     sha256sum "$1" 2>/dev/null | awk '{print $1}'
 }
 
@@ -332,11 +335,14 @@ agy_update_broker() {
     local mode="${1:-auto}"
     local before after current latest tmp_dir manifest status
 
-    [ -x "$AGY_PATCHED" ] || return 0
     tmp_dir=$(mktemp -d "$AGY_STATE_DIR/update.XXXXXX") || return 1
     manifest="$tmp_dir/manifest.json"
     before=$(agy_sha256 "$AGY_RAW")
-    current=$(agy_current_version)
+    if [ -x "$AGY_PATCHED" ]; then
+        current=$(agy_current_version)
+    else
+        current="none"
+    fi
 
     printf 'agy wrapper: checking for upstream update...\n' >&2
     set +e
@@ -371,7 +377,7 @@ agy_update_broker() {
         return 0
     fi
 
-    if [ "$current" = "$latest" ]; then
+    if [ "$current" = "$latest" ] && [ -x "$AGY_RAW" ]; then
         printf 'agy wrapper: already on upstream version %s.\n' "$latest" >&2
         rm -rf "$tmp_dir"
         return 0
@@ -462,7 +468,10 @@ agy_update_broker() {
 
     chmod 755 "$extracted"
     raw_backup="$AGY_STATE_DIR/agy.raw.$(date +%Y%m%d-%H%M%S).bak"
-    cp -p "$AGY_RAW" "$raw_backup"
+    mkdir -p "$(dirname "$AGY_RAW")"
+    if [ -e "$AGY_RAW" ]; then
+        cp -p "$AGY_RAW" "$raw_backup"
+    fi
     mv "$extracted" "$AGY_RAW"
     chmod 755 "$AGY_RAW"
 
