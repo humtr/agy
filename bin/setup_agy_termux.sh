@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091
 . "$ROOT_DIR/lib/agy-termux-lib.sh"
 
 usage() {
     cat <<'EOF'
-Usage: bash setup_agy_termux.sh [--status|--repair|--install-wrappers|--init-state]
+Usage: bash bin/setup_agy_termux.sh [--status|--repair|--install-wrappers|--init-state]
 
 Default action: --status
 

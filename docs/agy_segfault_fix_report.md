@@ -25,7 +25,7 @@ All three cited addresses are below `0x7fffffffff`.
 
 Observed local files:
 
-- `tcmalloc_fix.c`
+- `experiments/tcmalloc_fix.c`
 - `~/.local/glibc-shim/tcmalloc_fix.so`
 - live wrappers under `~/bin/agy` and `~/.local/bin/agy-va39`
 

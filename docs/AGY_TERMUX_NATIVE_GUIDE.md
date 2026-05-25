@@ -157,19 +157,19 @@ agy runtime and must not leak into normal Termux/Bionic tools.
 Status:
 
 ```bash
-bash setup_agy_termux.sh --status
+bash bin/setup_agy_termux.sh --status
 ```
 
 Install wrappers:
 
 ```bash
-bash setup_agy_termux.sh --install-wrappers
+bash bin/setup_agy_termux.sh --install-wrappers
 ```
 
 Rebuild patched runtime:
 
 ```bash
-bash setup_agy_termux.sh --repair
+bash bin/setup_agy_termux.sh --repair
 ```
 
 Update raw agy through the wrapper-managed broker:
