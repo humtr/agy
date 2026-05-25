@@ -2,7 +2,7 @@
 """Patch the official Antigravity Linux ARM64 agy binary for Termux.
 
 The input binary is never modified in place. By default the patched output is
-written next to the input as "<input>.termux-runtime"; callers may pass --output PATH for
+written next to the input as "<input>.patched"; callers may pass --output PATH for
 transactional repair flows.
 """
 
@@ -34,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output",
-        help="patched output path; defaults to <input>.termux-runtime",
+        help="patched output path; defaults to <input>.patched",
     )
     parser.add_argument(
         "--skip-syscall",
@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     src = Path(args.input).expanduser()
-    dst = Path(args.output).expanduser() if args.output else Path(str(src) + ".termux-runtime")
+    dst = Path(args.output).expanduser() if args.output else Path(str(src) + ".patched")
 
     if not src.exists():
         print(f"Input binary does not exist: {src}", file=sys.stderr)

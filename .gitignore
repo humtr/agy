@@ -4,10 +4,6 @@ backups/
 *.bak
 *.so
 agy
-agy.termux-runtime
-agy-termux-run
-agy.va39
-agy-va39
 
 # Diagnostic cases can contain raw stderr or environment evidence. Keep them
 # local unless a redacted excerpt is intentionally copied into docs.
