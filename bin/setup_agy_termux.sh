@@ -24,23 +24,26 @@ EOF
 }
 
 install_wrappers() {
-    mkdir -p "$(dirname "$AGY_USER_WRAPPER")" "$(dirname "$AGY_EXEC_WRAPPER")" "$AGY_STATE_DIR"
+    mkdir -p "$(dirname "$AGY_USER_WRAPPER")" "$AGY_RUNTIME_DIR" "$AGY_STATE_DIR"
+
+    install -m 755 "$ROOT_DIR/lib/agy-termux-lib.sh" "$AGY_RUNTIME_DIR/lib.sh"
+    install -m 755 "$ROOT_DIR/patches/patch_agy.py" "$AGY_RUNTIME_DIR/patch_agy.py"
 
     cat >"$AGY_USER_WRAPPER" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT="$ROOT_DIR"
+LIB="$AGY_RUNTIME_DIR/lib.sh"
 # shellcheck disable=SC1091
-. "\$ROOT/lib/agy-termux-lib.sh"
+. "\$LIB"
 agy_main "\$@"
 EOF
 
     cat >"$AGY_EXEC_WRAPPER" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT="$ROOT_DIR"
+LIB="$AGY_RUNTIME_DIR/lib.sh"
 # shellcheck disable=SC1091
-. "\$ROOT/lib/agy-termux-lib.sh"
+. "\$LIB"
 agy_run_patched "\$@"
 EOF
 
@@ -60,6 +63,9 @@ EOF
     echo "Installed wrappers:"
     echo "  $AGY_USER_WRAPPER"
     echo "  $AGY_EXEC_WRAPPER"
+    echo "Installed runtime support:"
+    echo "  $AGY_RUNTIME_DIR/lib.sh"
+    echo "  $AGY_RUNTIME_DIR/patch_agy.py"
 }
 
 init_state() {

@@ -20,6 +20,12 @@ The maintained layout is:
 ~/.local/lib/agy-termux/run
   Thin glibc/env execution wrapper for the patched runtime.
 
+~/.local/lib/agy-termux/lib.sh
+~/.local/lib/agy-termux/patch_agy.py
+  Installed runtime support files used by preflight, update, repair, and
+  diagnostics. Normal `agy` execution does not source files from the cloned
+  project directory.
+
 ~/bin/agy
   User-facing wrapper. Every normal invocation goes through preflight,
   execution, diagnostic capture, and postflight raw-change detection.
@@ -164,9 +170,10 @@ bash bin/setup_agy_termux.sh --install
 This installs `~/bin/agy` and `~/.local/lib/agy-termux/run`, downloads the current raw
 Linux ARM64 `agy` tarball through the wrapper-managed broker, verifies its
 `sha512`, and builds `~/.local/lib/agy-termux/agy`.
-The generated wrappers record the repository path used during setup, so the repo
-does not have to be hardcoded to `~/prj/agy`; that remains the expected default
-location.
+The generated wrappers source the installed support library at
+`~/.local/lib/agy-termux/lib.sh`, not the cloned repository. The repository is
+the install/update source; the installed files are the runtime source. Preflight
+does not compare against the repository on every invocation.
 
 Status:
 

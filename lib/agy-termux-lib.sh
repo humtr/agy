@@ -13,7 +13,13 @@ AGY_USER_WRAPPER="${AGY_USER_WRAPPER:-$AGY_HOME/bin/agy}"
 AGY_STATE_DIR="${AGY_STATE_DIR:-$AGY_HOME/.local/share/agy-termux}"
 AGY_STATE_FILE="${AGY_STATE_FILE:-$AGY_STATE_DIR/state.env}"
 AGY_DOCTOR_BASE="${AGY_DOCTOR_BASE:-$AGY_STATE_DIR/doctor}"
-AGY_PATCH_SCRIPT="${AGY_PATCH_SCRIPT:-$AGY_PROJECT_ROOT/patches/patch_agy.py}"
+if [ -z "${AGY_PATCH_SCRIPT:-}" ]; then
+    if [ -f "$AGY_LIB_DIR/patch_agy.py" ]; then
+        AGY_PATCH_SCRIPT="$AGY_LIB_DIR/patch_agy.py"
+    else
+        AGY_PATCH_SCRIPT="$AGY_PROJECT_ROOT/patches/patch_agy.py"
+    fi
+fi
 AGY_LOADER="${AGY_LOADER:-$AGY_PREFIX/glibc/lib/ld-linux-aarch64.so.1}"
 AGY_GLIBC_LIB="${AGY_GLIBC_LIB:-$AGY_PREFIX/glibc/lib}"
 AGY_SHIM_DIR="${AGY_SHIM_DIR:-$AGY_HOME/.local/glibc-shim}"
