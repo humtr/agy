@@ -4,6 +4,8 @@ backups/
 *.bak
 *.so
 agy
+agy.termux-runtime
+agy-termux-run
 agy.va39
 agy-va39
 

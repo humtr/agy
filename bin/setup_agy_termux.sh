@@ -12,10 +12,10 @@ Usage: bash bin/setup_agy_termux.sh [--install|--status|--repair|--install-wrapp
 Default action: --status
 
 Actions:
-  --install          Install wrappers, download/update raw agy, and build agy.va39.
+  --install          Install wrappers, download/update raw agy, and build agy.termux-runtime.
   --status           Print current wrapper/runtime status.
-  --repair           Transactionally rebuild ~/.local/bin/agy.va39 from raw agy.
-  --install-wrappers Install ~/bin/agy and ~/.local/bin/agy-va39 wrappers.
+  --repair           Transactionally rebuild ~/.local/bin/agy.termux-runtime from raw agy.
+  --install-wrappers Install ~/bin/agy and ~/.local/bin/agy-termux-run wrappers.
   --init-state       Initialize state.env after validating the current patched runtime.
 
 This script never patches the raw official agy binary in place and never runs

@@ -6,8 +6,8 @@ AGY_PROJECT_ROOT="${AGY_PROJECT_ROOT:-$(cd "$AGY_LIB_DIR/.." && pwd)}"
 AGY_HOME="${AGY_HOME:-$HOME}"
 AGY_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 AGY_RAW="${AGY_RAW:-$AGY_HOME/.local/bin/agy}"
-AGY_PATCHED="${AGY_PATCHED:-$AGY_HOME/.local/bin/agy.va39}"
-AGY_EXEC_WRAPPER="${AGY_EXEC_WRAPPER:-$AGY_HOME/.local/bin/agy-va39}"
+AGY_PATCHED="${AGY_PATCHED:-$AGY_HOME/.local/bin/agy.termux-runtime}"
+AGY_EXEC_WRAPPER="${AGY_EXEC_WRAPPER:-$AGY_HOME/.local/bin/agy-termux-run}"
 AGY_USER_WRAPPER="${AGY_USER_WRAPPER:-$AGY_HOME/bin/agy}"
 AGY_STATE_DIR="${AGY_STATE_DIR:-$AGY_HOME/.local/share/agy-termux}"
 AGY_STATE_FILE="${AGY_STATE_FILE:-$AGY_STATE_DIR/state.env}"
@@ -252,7 +252,7 @@ agy_repair_unlocked() {
 
     local tmp_dir candidate raw_hash patched_hash old_backup
     tmp_dir=$(mktemp -d "$AGY_STATE_DIR/repair.XXXXXX") || return 1
-    candidate="$tmp_dir/agy.va39"
+    candidate="$tmp_dir/agy.termux-runtime"
 
     if ! python3 "$AGY_PATCH_SCRIPT" "$AGY_RAW" --output "$candidate" >"$tmp_dir/patch.log" 2>&1; then
         agy_make_case 70 "$tmp_dir/patch.log" >/dev/null
@@ -274,7 +274,7 @@ agy_repair_unlocked() {
     fi
 
     if [ -e "$AGY_PATCHED" ]; then
-        old_backup="$AGY_STATE_DIR/agy.va39.$(date +%Y%m%d-%H%M%S).bak"
+        old_backup="$AGY_STATE_DIR/agy.termux-runtime.$(date +%Y%m%d-%H%M%S).bak"
         cp -p "$AGY_PATCHED" "$old_backup"
     fi
     mv "$candidate" "$AGY_PATCHED"

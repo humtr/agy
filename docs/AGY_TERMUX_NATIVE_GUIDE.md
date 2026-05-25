@@ -14,10 +14,10 @@ The maintained layout is:
 ~/.local/bin/agy
   Raw official agy binary. Preserve it and never patch it in place.
 
-~/.local/bin/agy.va39
+~/.local/bin/agy.termux-runtime
   Patched runtime copy generated from the raw binary.
 
-~/.local/bin/agy-va39
+~/.local/bin/agy-termux-run
   Thin glibc/env execution wrapper for the patched runtime.
 
 ~/bin/agy
@@ -63,8 +63,8 @@ The main reliability mechanism is:
 Preflight checks:
 
 - raw `~/.local/bin/agy` exists
-- patched `~/.local/bin/agy.va39` exists and is executable
-- `~/.local/bin/agy-va39` wrapper references the patched runtime
+- patched `~/.local/bin/agy.termux-runtime` exists and is executable
+- `~/.local/bin/agy-termux-run` wrapper references the patched runtime
 - glibc loader exists
 - Termux CA bundle exists
 - `state.env` matches current raw and patched hashes
@@ -78,16 +78,16 @@ then atomically moves the candidate into place.
 ## Updating Agy
 
 If the official updater replaces `~/.local/bin/agy`, the next wrapper invocation
-detects the raw hash mismatch and rebuilds `agy.va39` before normal execution.
+detects the raw hash mismatch and rebuilds `agy.termux-runtime` before normal execution.
 For normal commands, the wrapper checks the official Linux ARM64 manifest first.
 If the manifest version is newer than the current patched runtime, the wrapper
 downloads the manifest tarball, verifies its `sha512`, replaces only the raw
-`~/.local/bin/agy`, and immediately rebuilds `agy.va39` before continuing.
+`~/.local/bin/agy`, and immediately rebuilds `agy.termux-runtime` before continuing.
 
 Manual `agy update` is still allowed. If that command changes the raw binary,
 the wrapper performs the same manifest/tarball update broker instead of running
 the patched binary's built-in updater. This is intentional: running the built-in
-updater from `agy.va39` can update the currently executed patched path rather
+updater from `agy.termux-runtime` can update the currently executed patched path rather
 than the preserved raw path.
 
 Known limitation: if the patched process internally installs a new raw binary
@@ -161,9 +161,9 @@ cd ~/prj/agy
 bash bin/setup_agy_termux.sh --install
 ```
 
-This installs `~/bin/agy` and `~/.local/bin/agy-va39`, downloads the current raw
+This installs `~/bin/agy` and `~/.local/bin/agy-termux-run`, downloads the current raw
 Linux ARM64 `agy` tarball through the wrapper-managed broker, verifies its
-`sha512`, and builds `~/.local/bin/agy.va39`.
+`sha512`, and builds `~/.local/bin/agy.termux-runtime`.
 The generated wrappers record the repository path used during setup, so the repo
 does not have to be hardcoded to `~/prj/agy`; that remains the expected default
 location.
@@ -195,7 +195,7 @@ agy update
 ```
 
 The update broker reads the official manifest, verifies the tarball `sha512`,
-replaces only the raw `~/.local/bin/agy`, then rebuilds `agy.va39`. It does not
+replaces only the raw `~/.local/bin/agy`, then rebuilds `agy.termux-runtime`. It does not
 run auth login.
 
 ## What This Does Not Promise

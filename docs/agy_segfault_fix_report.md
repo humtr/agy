@@ -27,7 +27,7 @@ Observed local files:
 
 - `experiments/tcmalloc_fix.c`
 - `~/.local/glibc-shim/tcmalloc_fix.so`
-- live wrappers under `~/bin/agy` and `~/.local/bin/agy-va39`
+- live wrappers under `~/bin/agy` and `~/.local/bin/agy-termux-run`
 
 The shim source exports a replacement `mmap`:
 
