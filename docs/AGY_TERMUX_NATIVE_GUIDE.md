@@ -172,15 +172,15 @@ Rebuild patched runtime:
 bash setup_agy_termux.sh --repair
 ```
 
-Controlled official raw install/update:
+Update raw agy through the wrapper-managed broker:
 
 ```bash
-bash setup_agy_termux.sh --install-raw
+agy update
 ```
 
-The raw install action intentionally uses the official Antigravity installer.
-It may replace `~/.local/bin/agy`; the script rebuilds the patched runtime after
-that action. It does not run auth login.
+The update broker reads the official manifest, verifies the tarball `sha512`,
+replaces only the raw `~/.local/bin/agy`, then rebuilds `agy.va39`. It does not
+run auth login.
 
 ## What This Does Not Promise
 

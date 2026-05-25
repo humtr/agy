@@ -7,7 +7,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
     cat <<'EOF'
-Usage: bash setup_agy_termux.sh [--status|--repair|--install-wrappers|--init-state|--install-raw]
+Usage: bash setup_agy_termux.sh [--status|--repair|--install-wrappers|--init-state]
 
 Default action: --status
 
@@ -16,7 +16,6 @@ Actions:
   --repair           Transactionally rebuild ~/.local/bin/agy.va39 from raw agy.
   --install-wrappers Install ~/bin/agy and ~/.local/bin/agy-va39 wrappers.
   --init-state       Initialize state.env after validating the current patched runtime.
-  --install-raw      Controlled official install/update of raw agy via antigravity install.sh.
 
 This script never patches the raw official agy binary in place and never runs
 agy auth login.
@@ -78,12 +77,6 @@ init_state() {
     echo "Initialized state: $AGY_STATE_FILE"
 }
 
-install_raw() {
-    echo "Installing/updating official raw agy into: $(dirname "$AGY_RAW")" >&2
-    echo "This may replace only the raw official binary; patched runtime will be rebuilt afterwards." >&2
-    curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir "$(dirname "$AGY_RAW")"
-}
-
 action="${1:---status}"
 case "$action" in
     --status)
@@ -98,10 +91,6 @@ case "$action" in
         ;;
     --init-state)
         init_state
-        ;;
-    --install-raw)
-        install_raw
-        agy_repair official-update
         ;;
     -h|--help)
         usage
