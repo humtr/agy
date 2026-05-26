@@ -109,8 +109,10 @@ repair rather than unsafe `execve` hooks.
 
 Resolver handling is controlled by `AGY_RESOLVER_MODE`:
 
-- `auto` is the default. The wrapper probes the glibc resolver first and runs
-  without `proot` if native DNS works.
+- `proot` is the current default until user-driven OAuth login and real prompt
+  execution pass in native mode.
+- `auto` probes the glibc resolver first and runs without `proot` if native DNS
+  works.
 - `native` forces the glibc runtime path without `proot`.
 - `proot` forces the older `$PREFIX/etc/resolv.conf` bind over `/etc/resolv.conf`.
 
