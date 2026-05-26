@@ -180,10 +180,11 @@ optional `installer` branch.
 Fresh install after cloning the repository:
 
 ```bash
-pkg update
-pkg install -y git curl python tar patchelf coreutils ca-certificates proot glibc-repo
-pkg update
-pkg install -y glibc glibc-runner
+export DEBIAN_FRONTEND=noninteractive
+pkg update -y
+apt-get install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold git curl python tar patchelf coreutils ca-certificates proot glibc-repo
+pkg update -y
+apt-get install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold glibc glibc-runner
 git clone --branch main https://github.com/humtr/agy.git ~/prj/agy
 cd ~/prj/agy
 bash bin/install-runtime.sh --install
