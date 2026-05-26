@@ -546,7 +546,7 @@ agy_status() {
     printf 'proot availability: %s\n' "$(command -v proot >/dev/null 2>&1 && echo available || echo unavailable)"
     printf 'glibc hosts: %s\n' "$AGY_PREFIX/glibc/etc/hosts $([ -f "$AGY_PREFIX/glibc/etc/hosts" ] && echo present || echo missing)"
     printf 'glibc nsswitch: %s\n' "$AGY_PREFIX/glibc/etc/nsswitch.conf $([ -f "$AGY_PREFIX/glibc/etc/nsswitch.conf" ] && echo present || echo missing)"
-    printf 'tcmalloc shim policy: removed from runtime; source retained under experiments/\n'
+    printf 'tcmalloc shim policy: removed from runtime and active source\n'
     printf 'update broker: manifest sha512 verified tarball replacement\n'
     printf 'last diagnostic case: %s\n' "$(agy_last_case_path)"
 }

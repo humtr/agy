@@ -167,9 +167,10 @@ The required runtime decisions are the static VA39 patch, the `faccessat2`
 compatibility patch, and native-first resolver handling with explicit `proot`
 fallback.
 
-`tcmalloc_fix.so` is not part of the active runtime. Its source is retained only
-under `experiments/` as evidence for future crash investigations. The wrapper
-does not set `LD_PRELOAD` for it.
+`tcmalloc_fix.so` is not part of the active runtime or active source tree. The
+wrapper does not set `LD_PRELOAD` for it. If future crash evidence justifies
+re-testing that idea, recover the old shim from Git history and use a separate
+diagnostic branch.
 
 ## Setup And Repair
 

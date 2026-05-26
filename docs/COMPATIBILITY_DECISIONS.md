@@ -66,7 +66,7 @@ Policy:
 
 ## Decision 4: `tcmalloc_fix.so` mmap Shim
 
-Status: removed from runtime; source retained as experimental evidence only.
+Status: removed from runtime and active source.
 
 Evidence:
 
@@ -94,7 +94,6 @@ Policy:
 
 - Do not load `tcmalloc_fix.so` from the wrapper.
 - Do not document it as a proven structural fix.
-- Keep `experiments/tcmalloc_fix.c` only as a reference artifact for future
-  crash investigations.
-- If future crashes motivate re-testing, do that in a separate diagnostic branch
-  with explicit logging and without global `LD_PRELOAD`.
+- If future crashes motivate re-testing, recover the old shim source from Git
+  history and do that work in a separate diagnostic branch with explicit logging
+  and without global `LD_PRELOAD`.
