@@ -28,7 +28,6 @@ install_wrappers() {
 
     install -m 755 "$ROOT_DIR/lib/agy-termux-lib.sh" "$AGY_RUNTIME_DIR/lib.sh"
     install -m 755 "$ROOT_DIR/tools/build-runtime.py" "$AGY_RUNTIME_DIR/build-runtime.py"
-    install -m 644 "$ROOT_DIR/config/verified-agy-version.env" "$AGY_RUNTIME_DIR/verified-agy-version.env"
 
     cat >"$AGY_USER_WRAPPER" <<EOF
 #!/usr/bin/env bash
@@ -67,7 +66,6 @@ EOF
     echo "Installed runtime support:"
     echo "  $AGY_RUNTIME_DIR/lib.sh"
     echo "  $AGY_RUNTIME_DIR/build-runtime.py"
-    echo "  $AGY_RUNTIME_DIR/verified-agy-version.env"
 }
 
 init_state() {
