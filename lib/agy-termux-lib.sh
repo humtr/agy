@@ -389,7 +389,9 @@ agy_update_broker_once() {
         current="none"
     fi
 
-    if [ "$display_mode" = "run" ]; then
+    if [ "$display_mode" = "quiet" ]; then
+        :
+    elif [ "$display_mode" = "run" ]; then
         printf 'agy: checking for updates...\n' >&2
     else
         printf 'agy: checking %s update source...\n' "$source_label" >&2
@@ -413,7 +415,9 @@ agy_update_broker_once() {
     fi
 
     if [ "$current" = "$latest" ] && [ -x "$AGY_RAW" ]; then
-        if [ "$display_mode" = "run" ]; then
+        if [ "$display_mode" = "quiet" ]; then
+            :
+        elif [ "$display_mode" = "run" ]; then
             printf 'agy: version %s is current.\n' "$latest" >&2
         else
             printf 'agy: already on upstream version %s.\n' "$latest" >&2
@@ -432,7 +436,9 @@ agy_update_broker_once() {
         return 74
     fi
 
-    if [ "$display_mode" = "run" ]; then
+    if [ "$display_mode" = "quiet" ]; then
+        :
+    elif [ "$display_mode" = "run" ]; then
         printf 'agy: installing update %s -> %s...\n' "${current:-unknown}" "$latest" >&2
     else
         printf 'agy: updating official binary %s -> %s from %s...\n' "${current:-unknown}" "$latest" "$source_label" >&2
@@ -487,7 +493,9 @@ agy_update_broker_once() {
     if [ -n "$before" ] && [ -n "$after" ] && [ "$before" != "$after" ]; then
         agy_mark_raw_changed
     fi
-    printf 'agy: preparing runtime copy for version %s...\n' "$latest" >&2
+    if [ "$display_mode" != "quiet" ]; then
+        printf 'agy: preparing runtime copy for version %s...\n' "$latest" >&2
+    fi
     if ! agy_repair wrapper-update; then
         rm -rf "$tmp_dir"
         return 77
@@ -523,6 +531,7 @@ agy_update_broker() {
 agy_auto_update() {
     [ "${AGY_SKIP_AUTO_UPDATE:-0}" = "1" ] && return 0
     [ "${1:-}" = "auth" ] && return 0
+    [ "${1:-}" = "--version" ] && { agy_update_broker auto quiet; return $?; }
     agy_update_broker auto run
 }
 
