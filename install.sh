@@ -6,6 +6,7 @@ AGY_BRANCH="${AGY_BRANCH:-main}"
 AGY_INSTALL_ROOT="${AGY_INSTALL_ROOT:-$HOME/prj/agy}"
 AGY_INSTALL_DRY_RUN="${AGY_INSTALL_DRY_RUN:-0}"
 AGY_REQUIRED_PACKAGES="${AGY_REQUIRED_PACKAGES:-git curl python tar patchelf coreutils ca-certificates proot}"
+AGY_GLIBC_PACKAGES="${AGY_GLIBC_PACKAGES:-glibc-repo glibc glibc-runner}"
 
 say() {
     printf 'agy install: %s\n' "$*" >&2
@@ -57,6 +58,14 @@ check_glibc() {
         return 0
     fi
 
+    say "installing Termux glibc packages: $AGY_GLIBC_PACKAGES"
+    if run pkg install -y $AGY_GLIBC_PACKAGES; then
+        if [ -x "$loader" ] && [ -f "$libc" ]; then
+            say 'glibc runtime prerequisite is present'
+            return 0
+        fi
+    fi
+
     cat >&2 <<EOF
 agy install: ERROR: Termux glibc runtime is missing.
 
@@ -64,13 +73,17 @@ Required:
   $loader
   $libc
 
-Install a Termux glibc runtime, then rerun this installer. On common Termux
-setups this is typically:
+The installer tried:
 
-  pkg install glibc-repo
-  pkg install glibc
+  pkg install -y $AGY_GLIBC_PACKAGES
 
-This installer verifies glibc but does not bootstrap it automatically.
+If that failed, run:
+
+  termux-change-repo
+  pkg update
+  pkg install -y $AGY_GLIBC_PACKAGES
+
+Then rerun this installer.
 EOF
     exit 1
 }

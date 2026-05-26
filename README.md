@@ -19,15 +19,16 @@ pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/humtr/agy/ma
 The installer:
 
 - installs ordinary Termux dependencies with `pkg`
-- verifies that a Termux glibc runtime is already present
+- installs/verifies the Termux glibc runtime packages
 - clones or updates this repo at `~/prj/agy`
 - installs `~/bin/agy`
 - downloads the official Linux ARM64 `agy` binary through the wrapper broker
 - builds and validates the runtime copy
 - runs `agy --version`
 
-The installer does not bootstrap glibc automatically. If glibc is missing, it
-prints the required paths and a suggested Termux package command, then exits.
+If glibc package installation fails because the Termux mirror is incomplete or
+not selected, the installer prints the required paths and the manual recovery
+commands.
 
 ## Verified Fallback Version
 
@@ -81,7 +82,7 @@ AGY_RESOLVER_MODE=proot AGY_SKIP_AUTO_UPDATE=1 agy --version
 ## Manual Repo Install
 
 ```sh
-pkg install -y git curl python tar patchelf coreutils ca-certificates proot
+pkg install -y git curl python tar patchelf coreutils ca-certificates proot glibc-repo glibc glibc-runner
 git clone https://github.com/humtr/agy.git ~/prj/agy
 cd ~/prj/agy
 bash bin/install-runtime.sh --install
