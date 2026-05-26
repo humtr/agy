@@ -87,8 +87,15 @@ If the official updater replaces `~/.local/bin/agy`, the next wrapper invocation
 detects the raw hash mismatch and rebuilds the runtime copy before normal execution.
 For normal commands, the wrapper checks the official Linux ARM64 manifest first.
 If the manifest version is newer than the current runtime copy, the wrapper
-downloads the manifest tarball, verifies its `sha512`, replaces only the raw
-`~/.local/bin/agy`, and immediately rebuilds the runtime copy before continuing.
+downloads the manifest tarball into a temporary candidate path, verifies its
+`sha512`, builds and validates a candidate runtime copy, then promotes the raw
+binary and runtime copy together only after validation succeeds.
+
+If a new upstream version cannot be prepared for Termux, the wrapper keeps the
+last verified raw/runtime pair and records the failed upstream version in
+`state.env`. Later normal `agy` runs do not repeatedly retry the same failed
+version; they run the verified version and tell the user to run `agy update` to
+retry explicitly.
 
 Manual `agy update` is still allowed. If that command changes the raw binary,
 the wrapper performs the same manifest/tarball update broker instead of running

@@ -54,6 +54,12 @@ agy_load_state() {
     LAST_RAW_SHA256=""
     LAST_REPAIR_AT=""
     LAST_SELF_UPDATE_AT=""
+    VERIFIED_VERSION=""
+    LAST_SEEN_UPSTREAM_VERSION=""
+    LAST_FAILED_UPDATE_VERSION=""
+    LAST_FAILED_UPDATE_STATUS=""
+    LAST_FAILED_UPDATE_AT=""
+    LAST_FAILED_UPDATE_CASE=""
     if [ -f "$AGY_STATE_FILE" ]; then
         # shellcheck disable=SC1090
         . "$AGY_STATE_FILE"
@@ -70,6 +76,12 @@ agy_write_state() {
         printf 'NEEDS_REPATCH=%s\n' "${NEEDS_REPATCH:-1}"
         printf 'LAST_REPAIR_AT=%s\n' "${LAST_REPAIR_AT:-}"
         printf 'LAST_SELF_UPDATE_AT=%s\n' "${LAST_SELF_UPDATE_AT:-}"
+        printf 'VERIFIED_VERSION=%s\n' "${VERIFIED_VERSION:-}"
+        printf 'LAST_SEEN_UPSTREAM_VERSION=%s\n' "${LAST_SEEN_UPSTREAM_VERSION:-}"
+        printf 'LAST_FAILED_UPDATE_VERSION=%s\n' "${LAST_FAILED_UPDATE_VERSION:-}"
+        printf 'LAST_FAILED_UPDATE_STATUS=%s\n' "${LAST_FAILED_UPDATE_STATUS:-}"
+        printf 'LAST_FAILED_UPDATE_AT=%s\n' "${LAST_FAILED_UPDATE_AT:-}"
+        printf 'LAST_FAILED_UPDATE_CASE=%s\n' "${LAST_FAILED_UPDATE_CASE:-}"
     } >"$tmp"
     chmod 600 "$tmp"
     mv "$tmp" "$AGY_STATE_FILE"
@@ -141,6 +153,26 @@ agy_run_candidate() {
     shift
     agy_load_state
     agy_runtime_command "$candidate" "$@"
+}
+
+agy_build_runtime_candidate() {
+    local raw_input="$1"
+    local runtime_output="$2"
+    local log_file="$3"
+
+    if ! python3 "$AGY_RUNTIME_BUILDER" "$raw_input" --output "$runtime_output" >"$log_file" 2>&1; then
+        return 70
+    fi
+    if command -v patchelf >/dev/null 2>&1; then
+        if ! patchelf --set-interpreter "$AGY_LOADER" "$runtime_output" >>"$log_file" 2>&1; then
+            return 71
+        fi
+    fi
+    chmod 755 "$runtime_output"
+    if ! agy_run_candidate "$runtime_output" --version >>"$log_file" 2>&1; then
+        return 72
+    fi
+    return 0
 }
 
 agy_redact_file() {
@@ -289,21 +321,13 @@ agy_repair_unlocked() {
     tmp_dir=$(mktemp -d "$AGY_STATE_DIR/repair.XXXXXX") || return 1
     candidate="$tmp_dir/agy"
 
-    if ! python3 "$AGY_RUNTIME_BUILDER" "$AGY_RAW" --output "$candidate" >"$tmp_dir/build.log" 2>&1; then
-        agy_make_case 70 "$tmp_dir/build.log" >/dev/null
-        rm -rf "$tmp_dir"
-        return 1
-    fi
-    if command -v patchelf >/dev/null 2>&1; then
-        if ! patchelf --set-interpreter "$AGY_LOADER" "$candidate" >>"$tmp_dir/build.log" 2>&1; then
-            agy_make_case 71 "$tmp_dir/build.log" >/dev/null
-            rm -rf "$tmp_dir"
-            return 1
-        fi
-    fi
-    chmod 755 "$candidate"
-    if ! agy_run_candidate "$candidate" --version >>"$tmp_dir/build.log" 2>&1; then
-        agy_make_case 72 "$tmp_dir/build.log" >/dev/null
+    local build_status
+    set +e
+    agy_build_runtime_candidate "$AGY_RAW" "$candidate" "$tmp_dir/build.log"
+    build_status=$?
+    set -e
+    if [ "$build_status" -ne 0 ]; then
+        agy_make_case "$build_status" "$tmp_dir/build.log" >/dev/null
         rm -rf "$tmp_dir"
         return 1
     fi
@@ -322,6 +346,7 @@ agy_repair_unlocked() {
     NEEDS_REPATCH=0
     LAST_REPAIR_AT="$(date -Is)"
     LAST_SELF_UPDATE_AT="${LAST_SELF_UPDATE_AT:-}"
+    VERIFIED_VERSION="$(agy_current_version)"
     agy_write_state
     rm -rf "$tmp_dir"
     printf 'agy: runtime ready (%s)\n' "$reason" >&2
@@ -374,11 +399,39 @@ agy_versioned_manifest_url() {
     printf '%s/%s/manifest.json\n' "$AGY_VERSIONED_MANIFEST_BASE" "$1"
 }
 
+agy_record_update_failure() {
+    local version="$1"
+    local status="$2"
+    local case_path="${3:-}"
+    agy_load_state
+    LAST_FAILED_UPDATE_VERSION="$version"
+    LAST_FAILED_UPDATE_STATUS="$status"
+    LAST_FAILED_UPDATE_AT="$(date -Is)"
+    LAST_FAILED_UPDATE_CASE="$case_path"
+    agy_write_state
+}
+
+agy_clear_update_failure() {
+    agy_load_state
+    LAST_FAILED_UPDATE_VERSION=""
+    LAST_FAILED_UPDATE_STATUS=""
+    LAST_FAILED_UPDATE_AT=""
+    LAST_FAILED_UPDATE_CASE=""
+    agy_write_state
+}
+
+agy_set_seen_upstream() {
+    local version="$1"
+    agy_load_state
+    LAST_SEEN_UPSTREAM_VERSION="$version"
+    agy_write_state
+}
+
 agy_update_broker_once() {
     local manifest_url="$1"
     local source_label="$2"
     local display_mode="${3:-auto}"
-    local before after current latest tmp_dir manifest status
+    local before current latest tmp_dir manifest status
 
     tmp_dir=$(mktemp -d "$AGY_STATE_DIR/update.XXXXXX") || return 1
     manifest="$tmp_dir/manifest.json"
@@ -415,6 +468,12 @@ agy_update_broker_once() {
     fi
 
     if [ "$current" = "$latest" ] && [ -x "$AGY_RAW" ]; then
+        agy_set_seen_upstream "$latest"
+        agy_load_state
+        if [ -z "${VERIFIED_VERSION:-}" ]; then
+            VERIFIED_VERSION="$latest"
+            agy_write_state
+        fi
         if [ "$display_mode" = "quiet" ]; then
             :
         elif [ "$display_mode" = "run" ]; then
@@ -425,8 +484,19 @@ agy_update_broker_once() {
         rm -rf "$tmp_dir"
         return 0
     fi
+    agy_set_seen_upstream "$latest"
+    agy_load_state
+    if [ "$display_mode" = "run" ] && [ "${LAST_FAILED_UPDATE_VERSION:-}" = "$latest" ]; then
+        printf 'agy: update %s is available but not yet verified for Termux.\n' "$latest" >&2
+        if [ -n "${VERIFIED_VERSION:-$current}" ]; then
+            printf 'agy: running verified version %s.\n' "${VERIFIED_VERSION:-$current}" >&2
+        fi
+        printf 'agy: run "agy update" to retry the update.\n' >&2
+        rm -rf "$tmp_dir"
+        return 0
+    fi
 
-    local url expected_sha actual_sha extracted raw_backup
+    local url expected_sha actual_sha extracted candidate_raw candidate_runtime raw_backup runtime_backup case_dir build_status
     url=$(agy_manifest_field "$manifest" url)
     expected_sha=$(agy_manifest_field "$manifest" sha512)
     if [ -z "$url" ] || [ -z "$expected_sha" ]; then
@@ -448,7 +518,8 @@ agy_update_broker_once() {
     status=$?
     set -e
     if [ "$status" -ne 0 ]; then
-        agy_make_case "$status" "$tmp_dir/update.log" >/dev/null
+        case_dir=$(agy_make_case "$status" "$tmp_dir/update.log")
+        agy_record_update_failure "$latest" "download_failed" "$case_dir"
         rm -rf "$tmp_dir"
         return "$status"
     fi
@@ -456,7 +527,8 @@ agy_update_broker_once() {
     actual_sha=$(sha512sum "$tmp_dir/agy.tgz" | awk '{print $1}')
     if [ "$actual_sha" != "$expected_sha" ]; then
         printf 'sha512 mismatch\nexpected=%s\nactual=%s\n' "$expected_sha" "$actual_sha" >"$tmp_dir/update.log"
-        agy_make_case 75 "$tmp_dir/update.log" >/dev/null
+        case_dir=$(agy_make_case 75 "$tmp_dir/update.log")
+        agy_record_update_failure "$latest" "sha512_failed" "$case_dir"
         rm -rf "$tmp_dir"
         return 75
     fi
@@ -467,7 +539,8 @@ agy_update_broker_once() {
     status=$?
     set -e
     if [ "$status" -ne 0 ]; then
-        agy_make_case "$status" "$tmp_dir/update.log" >/dev/null
+        case_dir=$(agy_make_case "$status" "$tmp_dir/update.log")
+        agy_record_update_failure "$latest" "extract_failed" "$case_dir"
         rm -rf "$tmp_dir"
         return "$status"
     fi
@@ -475,31 +548,63 @@ agy_update_broker_once() {
     extracted="$tmp_dir/extract/antigravity"
     if [ ! -s "$extracted" ]; then
         printf 'expected extracted antigravity binary not found\n' >"$tmp_dir/update.log"
-        agy_make_case 76 "$tmp_dir/update.log" >/dev/null
+        case_dir=$(agy_make_case 76 "$tmp_dir/update.log")
+        agy_record_update_failure "$latest" "extract_missing_binary" "$case_dir"
         rm -rf "$tmp_dir"
         return 76
     fi
 
-    chmod 755 "$extracted"
-    raw_backup="$AGY_STATE_DIR/agy.raw.$(date +%Y%m%d-%H%M%S).bak"
-    mkdir -p "$(dirname "$AGY_RAW")"
-    if [ -e "$AGY_RAW" ]; then
-        cp -p "$AGY_RAW" "$raw_backup"
-    fi
-    mv "$extracted" "$AGY_RAW"
-    chmod 755 "$AGY_RAW"
-
-    after=$(agy_sha256 "$AGY_RAW")
-    if [ -n "$before" ] && [ -n "$after" ] && [ "$before" != "$after" ]; then
-        agy_mark_raw_changed
-    fi
-    if [ "$display_mode" != "quiet" ]; then
-        printf 'agy: preparing runtime copy for version %s...\n' "$latest" >&2
-    fi
-    if ! agy_repair wrapper-update; then
+    candidate_raw="$tmp_dir/agy.raw"
+    candidate_runtime="$tmp_dir/agy.runtime"
+    mv "$extracted" "$candidate_raw"
+    chmod 755 "$candidate_raw"
+    set +e
+    agy_build_runtime_candidate "$candidate_raw" "$candidate_runtime" "$tmp_dir/build.log"
+    build_status=$?
+    set -e
+    if [ "$build_status" -ne 0 ]; then
+        case_dir=$(agy_make_case "$build_status" "$tmp_dir/build.log")
+        agy_record_update_failure "$latest" "validation_failed" "$case_dir"
+        if [ "$display_mode" != "quiet" ]; then
+            printf 'agy: update %s could not be prepared for Termux.\n' "$latest" >&2
+            if [ -n "${VERIFIED_VERSION:-$current}" ]; then
+                printf 'agy: keeping verified version %s.\n' "${VERIFIED_VERSION:-$current}" >&2
+            fi
+        fi
         rm -rf "$tmp_dir"
         return 77
     fi
+
+    raw_backup="$AGY_STATE_DIR/agy.raw.$(date +%Y%m%d-%H%M%S).bak"
+    runtime_backup="$AGY_STATE_DIR/agy.runtime.$(date +%Y%m%d-%H%M%S).bak"
+    mkdir -p "$(dirname "$AGY_RAW")"
+    mkdir -p "$(dirname "$AGY_PATCHED")"
+    if [ -e "$AGY_RAW" ]; then
+        cp -p "$AGY_RAW" "$raw_backup"
+    fi
+    if [ -e "$AGY_PATCHED" ]; then
+        cp -p "$AGY_PATCHED" "$runtime_backup"
+    fi
+    mv "$candidate_raw" "$AGY_RAW"
+    mv "$candidate_runtime" "$AGY_PATCHED"
+    chmod 755 "$AGY_RAW"
+    chmod 755 "$AGY_PATCHED"
+    if [ "$display_mode" != "quiet" ]; then
+        printf 'agy: update %s is ready.\n' "$latest" >&2
+    fi
+    PATCHED_FROM_ORIGINAL_SHA256="$(agy_sha256 "$AGY_RAW")"
+    PATCHED_SHA256="$(agy_sha256 "$AGY_PATCHED")"
+    LAST_RAW_SHA256="$PATCHED_FROM_ORIGINAL_SHA256"
+    NEEDS_REPATCH=0
+    LAST_REPAIR_AT="$(date -Is)"
+    LAST_SELF_UPDATE_AT="${LAST_SELF_UPDATE_AT:-}"
+    VERIFIED_VERSION="$latest"
+    LAST_SEEN_UPSTREAM_VERSION="$latest"
+    LAST_FAILED_UPDATE_VERSION=""
+    LAST_FAILED_UPDATE_STATUS=""
+    LAST_FAILED_UPDATE_AT=""
+    LAST_FAILED_UPDATE_CASE=""
+    agy_write_state
     rm -rf "$tmp_dir"
 }
 
@@ -513,7 +618,16 @@ agy_update_broker() {
     status=$?
 
     if [ "$mode" != "explicit" ]; then
-        printf 'agy: update check failed; continuing with current runtime copy.\n' >&2
+        agy_load_state
+        if [ -n "${LAST_FAILED_UPDATE_VERSION:-}" ]; then
+            printf 'agy: update %s could not be prepared for Termux.\n' "$LAST_FAILED_UPDATE_VERSION" >&2
+            if [ -n "${VERIFIED_VERSION:-}" ]; then
+                printf 'agy: keeping verified version %s.\n' "$VERIFIED_VERSION" >&2
+            fi
+            printf 'agy: run "agy update" to retry the update.\n' >&2
+        else
+            printf 'agy: update check failed; continuing with current runtime copy.\n' >&2
+        fi
         return 0
     fi
 
@@ -531,7 +645,7 @@ agy_update_broker() {
 agy_auto_update() {
     [ "${AGY_SKIP_AUTO_UPDATE:-0}" = "1" ] && return 0
     [ "${1:-}" = "auth" ] && return 0
-    [ "${1:-}" = "--version" ] && { agy_update_broker auto quiet; return $?; }
+    [ "${1:-}" = "--version" ] && return 0
     agy_update_broker auto run
 }
 
@@ -559,6 +673,12 @@ agy_status() {
     agy_run_candidate "$AGY_PATCHED" --version 2>/dev/null || true
     printf 'PATCHED_FROM_ORIGINAL_SHA256: %s\n' "${PATCHED_FROM_ORIGINAL_SHA256:-}"
     printf 'NEEDS_REPATCH: %s\n' "${NEEDS_REPATCH:-1}"
+    printf 'VERIFIED_VERSION: %s\n' "${VERIFIED_VERSION:-}"
+    printf 'LAST_SEEN_UPSTREAM_VERSION: %s\n' "${LAST_SEEN_UPSTREAM_VERSION:-}"
+    printf 'LAST_FAILED_UPDATE_VERSION: %s\n' "${LAST_FAILED_UPDATE_VERSION:-}"
+    printf 'LAST_FAILED_UPDATE_STATUS: %s\n' "${LAST_FAILED_UPDATE_STATUS:-}"
+    printf 'LAST_FAILED_UPDATE_AT: %s\n' "${LAST_FAILED_UPDATE_AT:-}"
+    printf 'LAST_FAILED_UPDATE_CASE: %s\n' "${LAST_FAILED_UPDATE_CASE:-}"
     printf 'glibc loader: %s (%s)\n' "$AGY_LOADER" "$([ -x "$AGY_LOADER" ] && echo ok || echo missing)"
     printf 'SSL_CERT_FILE: %s (%s)\n' "$AGY_CERT_FILE" "$([ -f "$AGY_CERT_FILE" ] && echo ok || echo missing)"
     printf 'SSL_CERT_DIR: %s (%s)\n' "$AGY_CERT_DIR" "$([ -d "$AGY_CERT_DIR" ] && echo ok || echo missing)"

@@ -125,6 +125,7 @@ init_state() {
     NEEDS_REPATCH=0
     LAST_REPAIR_AT="${LAST_REPAIR_AT:-$(date -Is)}"
     LAST_SELF_UPDATE_AT="${LAST_SELF_UPDATE_AT:-}"
+    VERIFIED_VERSION="$(agy_current_version)"
     agy_write_state
     echo "Initialized state: $AGY_STATE_FILE"
 }
