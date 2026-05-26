@@ -109,18 +109,16 @@ repair rather than unsafe `execve` hooks.
 
 Resolver handling is controlled by `AGY_RESOLVER_MODE`:
 
-- `proot` is the current default until user-driven OAuth login and real prompt
-  execution pass in native mode.
-- `auto` probes the glibc resolver first and runs without `proot` if native DNS
-  works.
+- `auto` is the default. The wrapper probes the glibc resolver first and runs
+  without `proot` if native DNS works.
 - `native` forces the glibc runtime path without `proot`.
 - `proot` forces the older `$PREFIX/etc/resolv.conf` bind over `/etc/resolv.conf`.
 
 The native path uses `GODEBUG=netdns=cgo`, Termux CA certificates, and
 `$PREFIX/glibc/etc/{resolv.conf,nsswitch.conf,hosts}`. On the current verified
-device, native DNS and TLS checks pass without `proot`; OAuth login and real
-prompt execution must still be verified by the user-driven login test before
-removing the fallback.
+device, native DNS, TLS, user-driven OAuth login, update check, and a real
+`--print` prompt all pass without `proot`. The `proot` mode remains available as
+an explicit fallback.
 
 To test the native path without changing auth state:
 
@@ -128,7 +126,7 @@ To test the native path without changing auth state:
 AGY_RESOLVER_MODE=native AGY_SKIP_AUTO_UPDATE=1 agy --version
 ```
 
-Full prootless acceptance requires a user-driven OAuth test:
+Full prootless acceptance was validated with a user-driven OAuth test:
 
 ```bash
 AGY_RESOLVER_MODE=native agy auth login
@@ -136,8 +134,8 @@ AGY_RESOLVER_MODE=native agy auth login
 
 The user must complete the browser/OAuth flow. Do not paste OAuth callback URLs,
 codes, states, cookies, or tokens into diagnostics. After login completes, verify
-a harmless prompt in native mode. If native login or prompt execution fails while
-`proot` mode works, keep `proot` as the default or fallback.
+a harmless prompt in native mode. If native login or prompt execution regresses
+on another device while `proot` mode works, force `AGY_RESOLVER_MODE=proot`.
 
 ## Diagnostic Cases
 
