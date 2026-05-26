@@ -649,7 +649,9 @@ agy_main() {
     agy_preflight || return $?
     agy_auto_update "${1:-}" || return $?
     agy_preflight || return $?
-    printf 'agy: starting Antigravity CLI...\n' >&2
+    if [ "${1:-}" != "--version" ]; then
+        printf 'agy: starting Antigravity CLI...\n' >&2
+    fi
     local before after temp_raw exit_code case_dir
     before=$(agy_sha256 "$AGY_RAW")
     temp_raw="${TMPDIR:-/tmp}/agy_raw_$$"
