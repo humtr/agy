@@ -5,18 +5,8 @@ AGY_REPO_URL="${AGY_REPO_URL:-https://github.com/humtr/agy.git}"
 AGY_BRANCH="${AGY_BRANCH:-main}"
 AGY_INSTALL_ROOT="${AGY_INSTALL_ROOT:-$HOME/prj/agy}"
 AGY_INSTALL_DRY_RUN="${AGY_INSTALL_DRY_RUN:-0}"
-AGY_KEEP_SOURCE="${AGY_KEEP_SOURCE:-0}"
 AGY_REQUIRED_PACKAGES="${AGY_REQUIRED_PACKAGES:-git curl python tar patchelf coreutils ca-certificates proot}"
 AGY_GLIBC_PACKAGES="${AGY_GLIBC_PACKAGES:-glibc-repo glibc glibc-runner}"
-AGY_TEMP_REPO=""
-AGY_REPO_PATH=""
-
-cleanup() {
-    if [ -n "$AGY_TEMP_REPO" ]; then
-        rm -rf "$AGY_TEMP_REPO"
-    fi
-}
-trap cleanup EXIT
 
 say() {
     printf 'agy install: %s\n' "$*" >&2
@@ -26,7 +16,7 @@ run() {
     if [ "$AGY_INSTALL_DRY_RUN" = "1" ]; then
         printf '+ %s\n' "$*" >&2
     else
-        "$@" || return $?
+        "$@"
     fi
 }
 
@@ -100,44 +90,21 @@ EOF
 
 prepare_repo() {
     if [ -f "./bin/install-runtime.sh" ] && [ -f "./lib/agy-termux-lib.sh" ]; then
-        AGY_REPO_PATH=$(pwd)
-        return 0
-    fi
-
-    if [ "$AGY_KEEP_SOURCE" != "1" ]; then
-        AGY_TEMP_REPO=$(mktemp -d "${TMPDIR:-/tmp}/agy-install.XXXXXX") || fail 'failed to create temporary source directory'
-        say "cloning temporary installer source"
-        run git clone --depth 1 --branch "$AGY_BRANCH" "$AGY_REPO_URL" "$AGY_TEMP_REPO" || fail "failed to clone $AGY_REPO_URL"
-        if [ "$AGY_INSTALL_DRY_RUN" != "1" ]; then
-            [ -f "$AGY_TEMP_REPO/bin/install-runtime.sh" ] || fail "missing installer after clone: $AGY_TEMP_REPO/bin/install-runtime.sh"
-        fi
-        AGY_REPO_PATH="$AGY_TEMP_REPO"
+        pwd
         return 0
     fi
 
     if [ -d "$AGY_INSTALL_ROOT/.git" ]; then
         say "updating repo at $AGY_INSTALL_ROOT"
-        run git -C "$AGY_INSTALL_ROOT" fetch --prune origin || fail "failed to fetch $AGY_REPO_URL"
-        run git -C "$AGY_INSTALL_ROOT" checkout "$AGY_BRANCH" || fail "failed to checkout $AGY_BRANCH"
-        run git -C "$AGY_INSTALL_ROOT" pull --ff-only origin "$AGY_BRANCH" || fail "failed to fast-forward $AGY_INSTALL_ROOT"
-    elif [ -e "$AGY_INSTALL_ROOT" ]; then
-        cat >&2 <<EOF
-agy install: ERROR: $AGY_INSTALL_ROOT already exists but is not an agy Git checkout.
-
-Move it aside, then rerun this installer:
-
-  mv "$AGY_INSTALL_ROOT" "$AGY_INSTALL_ROOT.backup-\$(date +%Y%m%d-%H%M%S)"
-
-Or install without keeping source by leaving AGY_KEEP_SOURCE unset.
-EOF
-        exit 1
+        run git -C "$AGY_INSTALL_ROOT" fetch --prune origin
+        run git -C "$AGY_INSTALL_ROOT" checkout "$AGY_BRANCH"
+        run git -C "$AGY_INSTALL_ROOT" pull --ff-only origin "$AGY_BRANCH"
     else
         say "cloning repo to $AGY_INSTALL_ROOT"
-        run mkdir -p "$(dirname "$AGY_INSTALL_ROOT")" || fail "failed to create $(dirname "$AGY_INSTALL_ROOT")"
-        run git clone --branch "$AGY_BRANCH" "$AGY_REPO_URL" "$AGY_INSTALL_ROOT" || fail "failed to clone $AGY_REPO_URL"
+        run mkdir -p "$(dirname "$AGY_INSTALL_ROOT")"
+        run git clone --branch "$AGY_BRANCH" "$AGY_REPO_URL" "$AGY_INSTALL_ROOT"
     fi
-    [ -f "$AGY_INSTALL_ROOT/bin/install-runtime.sh" ] || fail "missing installer after repo setup: $AGY_INSTALL_ROOT/bin/install-runtime.sh"
-    AGY_REPO_PATH="$AGY_INSTALL_ROOT"
+    printf '%s\n' "$AGY_INSTALL_ROOT"
 }
 
 main() {
@@ -145,9 +112,10 @@ main() {
     install_dependencies
     check_glibc
 
-    prepare_repo
-    say "installing runtime from $AGY_REPO_PATH"
-    run bash "$AGY_REPO_PATH/bin/install-runtime.sh" --install
+    local repo
+    repo=$(prepare_repo)
+    say "installing runtime from $repo"
+    run bash "$repo/bin/install-runtime.sh" --install
 
     if [ "$AGY_INSTALL_DRY_RUN" = "1" ]; then
         say 'dry run complete'
