@@ -18,6 +18,8 @@ from pathlib import Path
 
 RUNTIME_SECTION = "google_malloc"
 CHUNK_SIZE = 1024 * 1024
+RESOLV_CONF_SOURCE = b"/etc/resolv.conf"
+RESOLV_CONF_TARGET = b"/proc/self/fd/33"
 
 
 @dataclass(frozen=True)
@@ -63,6 +65,7 @@ class BuildReport:
     pair_counts: dict[str, int]
     word_counts: dict[str, int]
     syscall_count: int
+    resolver_path_count: int
 
     @property
     def total(self) -> int:
@@ -71,6 +74,7 @@ class BuildReport:
             + sum(self.pair_counts.values())
             + sum(self.word_counts.values())
             + self.syscall_count
+            + self.resolver_path_count
         )
 
 
@@ -263,6 +267,14 @@ def rewrite_syscall_compat(data: bytearray, enabled: bool) -> int:
     return count
 
 
+def rewrite_resolver_path_compat(data: bytearray) -> int:
+    if len(RESOLV_CONF_SOURCE) != len(RESOLV_CONF_TARGET):
+        raise RuntimeError("resolver path rewrite must preserve byte length")
+    count = data.count(RESOLV_CONF_SOURCE)
+    data[:] = data.replace(RESOLV_CONF_SOURCE, RESOLV_CONF_TARGET)
+    return count
+
+
 def validate_report(report: BuildReport) -> None:
     if report.total == 0:
         raise RuntimeError("no runtime rewrites applied")
@@ -277,6 +289,8 @@ def validate_report(report: BuildReport) -> None:
     for group in WORD_REWRITE_GROUPS:
         if group.required and report.word_counts.get(group.name, 0) == 0:
             missing_required.append(group.name)
+    if report.resolver_path_count == 0:
+        missing_required.append("resolver-path")
 
     if missing_required:
         names = ", ".join(missing_required)
@@ -309,6 +323,7 @@ def build_runtime(src: Path, dst: Path, syscall_compat: bool) -> BuildReport:
         pair_counts=rewrite_word_pairs(data, lo, hi),
         word_counts=rewrite_word_groups(data, lo, hi),
         syscall_count=rewrite_syscall_compat(data, syscall_compat),
+        resolver_path_count=rewrite_resolver_path_compat(data),
     )
     validate_report(report)
 
@@ -327,6 +342,7 @@ def print_report(report: BuildReport) -> None:
     for name, count in report.word_counts.items():
         print(f"  {name}: {count}")
     print(f"  {SYSCALL_COMPAT_RULE.name}: {report.syscall_count}")
+    print(f"  resolver-path: {report.resolver_path_count}")
     print(f"  total: {report.total}")
 
 

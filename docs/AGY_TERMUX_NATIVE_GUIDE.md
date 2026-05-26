@@ -114,39 +114,36 @@ Antigravity auto-update was confirmed from local binary inspection. This wrapper
 therefore uses update-before-run, verified tarball replacement, detection, and
 repair rather than unsafe `execve` hooks.
 
-Resolver handling is controlled by `AGY_RESOLVER_MODE`:
-
-- `auto` is the default. The wrapper binds Termux's `$PREFIX/etc/resolv.conf`
-  into the agy runtime with `proot` when available.
-- `native` forces the glibc runtime path without `proot`.
-- `proot` forces the `$PREFIX/etc/resolv.conf` bind over `/etc/resolv.conf`.
+Resolver handling is strict native fd mode. The wrapper opens Termux's
+`$PREFIX/etc/resolv.conf` on fd 33 for the agy runtime and does not provide a
+runtime resolver mode switch.
 
 The runtime uses `GODEBUG=netdns=go`, Termux CA certificates, and invokes the
 glibc loader with `--library-path` instead of exporting `LD_LIBRARY_PATH`.
 This keeps child Bionic tools from inheriting glibc paths while still giving the
 agy runtime the libraries it needs.
 
-On the current verified device, a native path without the resolver bind still
-resolved Google hosts through `[::1]:53` and failed. The default therefore uses
-the scoped `proot` resolver bind for agy only. Normal Termux commands do not
-inherit this environment.
+The runtime builder rewrites the agy binary's `/etc/resolv.conf` references to
+`/proc/self/fd/33`. The wrapper then opens fd 33 from
+`$PREFIX/etc/resolv.conf` before executing agy. This avoids the Android
+`/etc -> /system/etc` resolver gap without bind mounts, global
+`LD_LIBRARY_PATH`, or shared-storage resolver files.
 
-To test the native path without changing auth state:
+To verify the canonical resolver path without changing auth state:
 
 ```bash
-AGY_RESOLVER_MODE=native AGY_SKIP_AUTO_UPDATE=1 agy --version
+AGY_SKIP_AUTO_UPDATE=1 agy --version
 ```
 
 OAuth must be user-driven:
 
 ```bash
-AGY_RESOLVER_MODE=native agy auth login
+agy auth login
 ```
 
 The user must complete the browser/OAuth flow. Do not paste OAuth callback URLs,
 codes, states, cookies, or tokens into diagnostics. After login completes, verify
-a harmless prompt. If `native` mode regresses on another device while `proot`
-mode works, keep the default `auto` mode.
+a harmless prompt.
 
 ## Diagnostic Cases
 
@@ -175,7 +172,7 @@ It is not a proof that arbitrary logs are secret-free.
 
 See `docs/COMPATIBILITY_DECISIONS.md` for the maintained compatibility record.
 The required runtime decisions are the static VA39 patch, the `faccessat2`
-compatibility patch, scoped resolver binding in `auto` mode, and loader-scoped
+compatibility patch, strict native fd33 resolver path, and loader-scoped
 glibc library paths.
 
 `tcmalloc_fix.so` is not part of the active runtime or active source tree. The
@@ -193,7 +190,7 @@ Fresh install after cloning the repository:
 ```bash
 export DEBIAN_FRONTEND=noninteractive
 pkg update -y
-apt-get install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold git curl python tar patchelf coreutils ca-certificates proot glibc-repo
+apt-get install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold git curl python tar patchelf coreutils ca-certificates glibc-repo
 pkg update -y
 apt-get install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold glibc glibc-runner
 git clone --branch main https://github.com/humtr/agy.git ~/prj/agy

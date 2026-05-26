@@ -45,7 +45,7 @@ Policy:
 
 ## Decision 3: Resolver Strategy
 
-Status: scoped `proot` resolver bind by default.
+Status: native fd-backed resolver path by default.
 
 Evidence:
 
@@ -54,18 +54,14 @@ Evidence:
 - `LD_LIBRARY_PATH` is removed from the environment before agy starts, so child
   Bionic tools do not inherit glibc paths.
 - `GODEBUG=netdns=go` avoids glibc NSS resolver behavior inside the Go runtime.
-- On the current verified device, native mode without a resolver bind still
-  resolved Google hosts through `[::1]:53` and failed.
-- Binding `$PREFIX/etc/resolv.conf` over `/etc/resolv.conf` for the agy runtime
-  fixed the resolver path while keeping the bind scoped to agy only.
+- Rewriting the runtime copy's `/etc/resolv.conf` references to
+  `/proc/self/fd/33` and opening fd 33 from `$PREFIX/etc/resolv.conf` is
+  required for deterministic native resolver behavior on this device.
 
 Policy:
 
-- Default to `AGY_RESOLVER_MODE=auto`.
-- In `auto`, use the scoped `proot` resolver bind when `proot` and
-  `$PREFIX/etc/resolv.conf` are available.
-- Keep `AGY_RESOLVER_MODE=native` as an explicit diagnostic mode, not the
-  default reliability path.
+- Use strict native fd-backed resolver path only.
+- Do not expose runtime resolver mode switches.
 
 ## Decision 4: `tcmalloc_fix.so` mmap Shim
 
