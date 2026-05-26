@@ -50,6 +50,7 @@ EOF
 
     chmod 755 "$AGY_USER_WRAPPER" "$AGY_EXEC_WRAPPER"
     ensure_user_path
+    install_prefix_wrapper
 
     mkdir -p "$AGY_SHIM_DIR"
     if [ -f "$AGY_GLIBC_LIB/libc.so.6" ]; then
@@ -64,6 +65,7 @@ EOF
 
     echo "Installed wrappers:"
     echo "  $AGY_USER_WRAPPER"
+    echo "  $AGY_PREFIX/bin/agy"
     echo "  $AGY_EXEC_WRAPPER"
     echo "Installed runtime support:"
     echo "  $AGY_RUNTIME_DIR/lib.sh"
@@ -71,6 +73,26 @@ EOF
     echo "  $AGY_RUNTIME_DIR/verified-agy-version.env"
     echo "Ensured startup PATH includes:"
     echo "  $HOME/bin"
+}
+
+install_prefix_wrapper() {
+    local prefix_wrapper backup
+    prefix_wrapper="$AGY_PREFIX/bin/agy"
+    mkdir -p "$(dirname "$prefix_wrapper")"
+
+    if [ -e "$prefix_wrapper" ] && ! grep -Fq 'agy-termux managed prefix wrapper' "$prefix_wrapper" 2>/dev/null; then
+        backup="$prefix_wrapper.backup-$(date +%Y%m%d-%H%M%S)"
+        cp -p "$prefix_wrapper" "$backup"
+        echo "Backed up existing PATH wrapper:"
+        echo "  $backup"
+    fi
+
+    cat >"$prefix_wrapper" <<EOF
+#!/usr/bin/env bash
+# agy-termux managed prefix wrapper
+exec "$AGY_USER_WRAPPER" "\$@"
+EOF
+    chmod 755 "$prefix_wrapper"
 }
 
 ensure_user_path() {

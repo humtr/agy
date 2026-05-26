@@ -189,23 +189,21 @@ cd ~/prj/agy
 bash bin/install-runtime.sh --install
 ```
 
-If the current shell still cannot find `agy` immediately after install, refresh
-the shell PATH or open a new Termux session:
-
-```bash
-export PATH="$HOME/bin:$PATH"
-```
-
 The `installer` branch only adds a convenience `install.sh` bootstrapper around
 this same runtime workflow.
 
-This installs `~/bin/agy` and `~/.local/lib/agy-termux/run`, downloads the current raw
-Linux ARM64 `agy` tarball through the wrapper-managed broker, verifies its
-`sha512`, and builds `~/.local/lib/agy-termux/agy`.
+This installs `~/bin/agy`, `$PREFIX/bin/agy`, and
+`~/.local/lib/agy-termux/run`, downloads the current raw Linux ARM64 `agy`
+tarball through the wrapper-managed broker, verifies its `sha512`, and builds
+`~/.local/lib/agy-termux/agy`.
 The generated wrappers source the installed support library at
 `~/.local/lib/agy-termux/lib.sh`, not the cloned repository. The repository is
 the install/update source; the installed files are the runtime source. Preflight
 does not compare against the repository on every invocation.
+
+`$PREFIX/bin/agy` is a small managed shim that execs `~/bin/agy`. `$PREFIX/bin`
+is always on Termux PATH, so `agy` should resolve even if a shell does not read
+`~/.profile`, `~/.bashrc`, or `~/.zshrc`.
 
 Status:
 
