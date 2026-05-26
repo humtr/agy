@@ -109,10 +109,10 @@ agy_select_resolver_mode() {
             printf 'proot\n'
             ;;
         auto|"")
-            if agy_native_resolver_ok; then
-                printf 'native\n'
-            elif command -v proot >/dev/null 2>&1 && [ -f "$AGY_RESOLV_CONF" ]; then
+            if command -v proot >/dev/null 2>&1 && [ -f "$AGY_RESOLV_CONF" ]; then
                 printf 'proot\n'
+            elif agy_native_resolver_ok; then
+                printf 'native\n'
             else
                 printf 'native\n'
             fi
@@ -126,20 +126,26 @@ agy_select_resolver_mode() {
 agy_runtime_command() {
     local cert_dir_env=()
     local runtime_env=()
-    local resolver_mode
+    local resolver_mode executable
+    executable="$1"
+    shift
     resolver_mode=$(agy_select_resolver_mode)
     if [ -d "$AGY_CERT_DIR" ]; then
         cert_dir_env=("SSL_CERT_DIR=$AGY_CERT_DIR")
     fi
     runtime_env=(env -u LD_PRELOAD -u LD_LIBRARY_PATH \
-        GODEBUG="${GODEBUG:-netdns=cgo}" \
+        HOME="$AGY_HOME" \
+        XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$AGY_HOME/.config}" \
+        XDG_CACHE_HOME="${XDG_CACHE_HOME:-$AGY_HOME/.cache}" \
+        XDG_DATA_HOME="${XDG_DATA_HOME:-$AGY_HOME/.local/share}" \
+        GODEBUG="${GODEBUG:-netdns=go}" \
         SSL_CERT_FILE="$AGY_CERT_FILE" \
-        LD_LIBRARY_PATH="$AGY_SHIM_DIR:$AGY_GLIBC_LIB" \
         "${cert_dir_env[@]}")
     if [ "$resolver_mode" = "proot" ] && command -v proot >/dev/null 2>&1 && [ -f "$AGY_RESOLV_CONF" ]; then
-        proot -b "$AGY_RESOLV_CONF:/etc/resolv.conf" "${runtime_env[@]}" "$@"
+        proot -b "$AGY_RESOLV_CONF:/etc/resolv.conf" "${runtime_env[@]}" \
+            "$AGY_LOADER" --library-path "$AGY_SHIM_DIR:$AGY_GLIBC_LIB" "$executable" "$@"
     else
-        "${runtime_env[@]}" "$@"
+        "${runtime_env[@]}" "$AGY_LOADER" --library-path "$AGY_SHIM_DIR:$AGY_GLIBC_LIB" "$executable" "$@"
     fi
 }
 

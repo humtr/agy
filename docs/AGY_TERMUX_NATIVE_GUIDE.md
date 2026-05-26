@@ -116,16 +116,20 @@ repair rather than unsafe `execve` hooks.
 
 Resolver handling is controlled by `AGY_RESOLVER_MODE`:
 
-- `auto` is the default. The wrapper probes the glibc resolver first and runs
-  without `proot` if native DNS works.
+- `auto` is the default. The wrapper binds Termux's `$PREFIX/etc/resolv.conf`
+  into the agy runtime with `proot` when available.
 - `native` forces the glibc runtime path without `proot`.
-- `proot` forces the older `$PREFIX/etc/resolv.conf` bind over `/etc/resolv.conf`.
+- `proot` forces the `$PREFIX/etc/resolv.conf` bind over `/etc/resolv.conf`.
 
-The native path uses `GODEBUG=netdns=cgo`, Termux CA certificates, and
-`$PREFIX/glibc/etc/{resolv.conf,nsswitch.conf,hosts}`. On the current verified
-device, native DNS, TLS, user-driven OAuth login, update check, and a real
-`--print` prompt all pass without `proot`. The `proot` mode remains available as
-an explicit fallback.
+The runtime uses `GODEBUG=netdns=go`, Termux CA certificates, and invokes the
+glibc loader with `--library-path` instead of exporting `LD_LIBRARY_PATH`.
+This keeps child Bionic tools from inheriting glibc paths while still giving the
+agy runtime the libraries it needs.
+
+On the current verified device, a native path without the resolver bind still
+resolved Google hosts through `[::1]:53` and failed. The default therefore uses
+the scoped `proot` resolver bind for agy only. Normal Termux commands do not
+inherit this environment.
 
 To test the native path without changing auth state:
 
@@ -133,7 +137,7 @@ To test the native path without changing auth state:
 AGY_RESOLVER_MODE=native AGY_SKIP_AUTO_UPDATE=1 agy --version
 ```
 
-Full prootless acceptance was validated with a user-driven OAuth test:
+OAuth must be user-driven:
 
 ```bash
 AGY_RESOLVER_MODE=native agy auth login
@@ -141,8 +145,8 @@ AGY_RESOLVER_MODE=native agy auth login
 
 The user must complete the browser/OAuth flow. Do not paste OAuth callback URLs,
 codes, states, cookies, or tokens into diagnostics. After login completes, verify
-a harmless prompt in native mode. If native login or prompt execution regresses
-on another device while `proot` mode works, force `AGY_RESOLVER_MODE=proot`.
+a harmless prompt. If `native` mode regresses on another device while `proot`
+mode works, keep the default `auto` mode.
 
 ## Diagnostic Cases
 
@@ -171,8 +175,8 @@ It is not a proof that arbitrary logs are secret-free.
 
 See `docs/COMPATIBILITY_DECISIONS.md` for the maintained compatibility record.
 The required runtime decisions are the static VA39 patch, the `faccessat2`
-compatibility patch, and native-first resolver handling with explicit `proot`
-fallback.
+compatibility patch, scoped resolver binding in `auto` mode, and loader-scoped
+glibc library paths.
 
 `tcmalloc_fix.so` is not part of the active runtime or active source tree. The
 wrapper does not set `LD_PRELOAD` for it. If future crash evidence justifies

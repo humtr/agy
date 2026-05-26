@@ -45,24 +45,27 @@ Policy:
 
 ## Decision 3: Resolver Strategy
 
-Status: native-first with `proot` fallback.
+Status: scoped `proot` resolver bind by default.
 
 Evidence:
 
-- glibc DNS resolved `oauth2.googleapis.com` without `proot`.
-- glibc DNS resolved the official updater host without `proot`.
-- TLS verification with the Termux CA bundle passed for OAuth and updater hosts.
-- User-driven `AGY_RESOLVER_MODE=native agy auth login` completed.
-- `AGY_RESOLVER_MODE=native agy --print 'Reply with exactly:
-  AGY_TERMUX_NATIVE_OK'` returned `AGY_TERMUX_NATIVE_OK`.
-- `strace -f -e execve` for the native prompt path showed no `proot` execution.
+- The agy runtime is executed by `ld-linux-aarch64.so.1 --library-path ...`
+  instead of exporting `LD_LIBRARY_PATH`.
+- `LD_LIBRARY_PATH` is removed from the environment before agy starts, so child
+  Bionic tools do not inherit glibc paths.
+- `GODEBUG=netdns=go` avoids glibc NSS resolver behavior inside the Go runtime.
+- On the current verified device, native mode without a resolver bind still
+  resolved Google hosts through `[::1]:53` and failed.
+- Binding `$PREFIX/etc/resolv.conf` over `/etc/resolv.conf` for the agy runtime
+  fixed the resolver path while keeping the bind scoped to agy only.
 
 Policy:
 
 - Default to `AGY_RESOLVER_MODE=auto`.
-- Use native glibc resolver when the probe succeeds.
-- Keep `AGY_RESOLVER_MODE=proot` as an explicit fallback for device-specific
-  resolver regressions.
+- In `auto`, use the scoped `proot` resolver bind when `proot` and
+  `$PREFIX/etc/resolv.conf` are available.
+- Keep `AGY_RESOLVER_MODE=native` as an explicit diagnostic mode, not the
+  default reliability path.
 
 ## Decision 4: `tcmalloc_fix.so` mmap Shim
 
