@@ -174,12 +174,20 @@ diagnostic branch.
 
 ## Setup And Repair
 
+This `main` branch is the canonical runtime source. It does not require the
+optional `installer` branch.
+
 Fresh install after cloning the repository:
 
 ```bash
+pkg install -y git curl python tar patchelf coreutils ca-certificates proot glibc-repo glibc glibc-runner
+git clone --branch main https://github.com/humtr/agy.git ~/prj/agy
 cd ~/prj/agy
 bash bin/install-runtime.sh --install
 ```
+
+The `installer` branch only adds a convenience `install.sh` bootstrapper around
+this same runtime workflow.
 
 This installs `~/bin/agy` and `~/.local/lib/agy-termux/run`, downloads the current raw
 Linux ARM64 `agy` tarball through the wrapper-managed broker, verifies its
