@@ -20,7 +20,7 @@ The installer:
 
 - installs ordinary Termux dependencies with `pkg`
 - installs/verifies the Termux glibc runtime packages
-- clones or updates this repo at `~/prj/agy`
+- downloads installer source into a temporary directory by default
 - installs `~/bin/agy`
 - downloads the official Linux ARM64 `agy` binary through the wrapper broker
 - builds and validates the runtime copy
@@ -29,6 +29,13 @@ The installer:
 If glibc package installation fails because the Termux mirror is incomplete or
 not selected, the installer prints the required paths and the manual recovery
 commands.
+
+The one-command installer does not keep a source checkout. To keep or update the
+repo under `~/prj/agy`, use:
+
+```sh
+AGY_KEEP_SOURCE=1 curl -fsSL https://raw.githubusercontent.com/humtr/agy/main/install.sh | bash
+```
 
 ## Verified Fallback Version
 

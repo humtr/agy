@@ -195,6 +195,9 @@ The generated wrappers source the installed support library at
 the install/update source; the installed files are the runtime source. Preflight
 does not compare against the repository on every invocation.
 
+The one-command installer uses a temporary source checkout by default. Set
+`AGY_KEEP_SOURCE=1` to keep or update the source under `~/prj/agy`.
+
 The installer installs/verifies `glibc-repo`, `glibc`, and `glibc-runner`. If
 Termux mirror configuration prevents that install, it prints recovery commands
 and stops before touching auth state.
