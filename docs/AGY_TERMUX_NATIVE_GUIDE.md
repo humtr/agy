@@ -195,9 +195,8 @@ The generated wrappers source the installed support library at
 the install/update source; the installed files are the runtime source. Preflight
 does not compare against the repository on every invocation.
 
-The installer installs/verifies `glibc-repo`, `glibc`, and `glibc-runner`. If
-Termux mirror configuration prevents that install, it prints recovery commands
-and stops before touching auth state.
+The installer does not bootstrap glibc. It verifies the glibc loader and libc
+paths and stops with guidance if they are missing.
 
 Status:
 
