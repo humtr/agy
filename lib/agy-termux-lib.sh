@@ -333,7 +333,7 @@ agy_repair() {
 
 agy_preflight() {
     if agy_needs_repatch; then
-        printf 'agy preflight: repairing patched runtime...\n' >&2
+        printf 'agy preflight: repairing runtime copy...\n' >&2
         agy_repair preflight
     fi
 }
@@ -547,7 +547,11 @@ agy_status() {
     printf 'glibc hosts: %s\n' "$AGY_PREFIX/glibc/etc/hosts $([ -f "$AGY_PREFIX/glibc/etc/hosts" ] && echo present || echo missing)"
     printf 'glibc nsswitch: %s\n' "$AGY_PREFIX/glibc/etc/nsswitch.conf $([ -f "$AGY_PREFIX/glibc/etc/nsswitch.conf" ] && echo present || echo missing)"
     printf 'tcmalloc shim policy: removed from runtime and active source\n'
-    printf 'update broker: manifest sha512 verified tarball replacement\n'
+    printf 'update broker: current manifest sha512 verification'
+    if [ -n "${AGY_VERIFIED_FALLBACK_VERSION:-}" ]; then
+        printf ' with verified fallback %s' "$AGY_VERIFIED_FALLBACK_VERSION"
+    fi
+    printf '\n'
     printf 'last diagnostic case: %s\n' "$(agy_last_case_path)"
 }
 
@@ -643,7 +647,7 @@ agy_main() {
     after=$(agy_sha256 "$AGY_RAW")
     if [ -n "$before" ] && [ -n "$after" ] && [ "$before" != "$after" ]; then
         agy_mark_raw_changed
-        printf 'Raw agy changed during execution. Rebuilding patched runtime now...\n' >&2
+        printf 'Raw agy changed during execution. Rebuilding runtime copy now...\n' >&2
         agy_repair postflight-update
     fi
     if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 130 ]; then
