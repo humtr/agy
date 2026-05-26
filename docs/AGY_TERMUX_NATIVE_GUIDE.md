@@ -160,29 +160,16 @@ Redaction is best-effort. It targets bearer headers, cookies, OAuth token/query
 fields, callback URLs containing code/token/state, and known fake test markers.
 It is not a proof that arbitrary logs are secret-free.
 
-## `tcmalloc_fix.so` Policy
+## Compatibility Decisions
 
-`tcmalloc_fix.so` is treated as experimental and gated, not a default structural
-fix.
+See `docs/COMPATIBILITY_DECISIONS.md` for the maintained compatibility record.
+The required runtime decisions are the static VA39 patch, the `faccessat2`
+compatibility patch, and native-first resolver handling with explicit `proot`
+fallback.
 
-Evidence from local inspection:
-
-- The shim exports only `mmap`.
-- It nulls requested `mmap` address hints above `0x7fffffffff`.
-- It does not verify returned `mmap` addresses.
-- It does not intercept `mmap64`, `mremap`, or allocator-specific internals.
-- The previous segfault report used incorrect arithmetic: `0x2e80000000`,
-  `0x622fe3cdd0`, and `0x7ce81be000` are all below `0x7fffffffff`.
-
-Default production behavior does not set `LD_PRELOAD`. To test the shim for a
-single `agy` invocation only:
-
-```bash
-AGY_ENABLE_TCMALLOC_SHIM=1 agy --version
-```
-
-Do not export that variable globally. `LD_PRELOAD` must stay scoped to the glibc
-agy runtime and must not leak into normal Termux/Bionic tools.
+`tcmalloc_fix.so` is not part of the active runtime. Its source is retained only
+under `experiments/` as evidence for future crash investigations. The wrapper
+does not set `LD_PRELOAD` for it.
 
 ## Setup And Repair
 

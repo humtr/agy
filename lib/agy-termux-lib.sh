@@ -28,8 +28,6 @@ AGY_CERT_DIR="${AGY_CERT_DIR:-$AGY_PREFIX/etc/tls/certs}"
 AGY_RESOLV_CONF="${AGY_RESOLV_CONF:-$AGY_PREFIX/etc/resolv.conf}"
 AGY_RESOLVER_MODE="${AGY_RESOLVER_MODE:-auto}"
 AGY_RESOLVER_PROBE_HOST="${AGY_RESOLVER_PROBE_HOST:-oauth2.googleapis.com}"
-AGY_TCMALLOC_SHIM="${AGY_TCMALLOC_SHIM:-$AGY_SHIM_DIR/tcmalloc_fix.so}"
-AGY_TCMALLOC_POLICY="${AGY_TCMALLOC_POLICY:-gated}"
 AGY_MANIFEST_URL="${AGY_MANIFEST_URL:-https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_arm64.json}"
 
 agy_sha256() {
@@ -44,7 +42,6 @@ agy_load_state() {
     LAST_RAW_SHA256=""
     LAST_REPAIR_AT=""
     LAST_SELF_UPDATE_AT=""
-    TCMALLOC_POLICY="$AGY_TCMALLOC_POLICY"
     if [ -f "$AGY_STATE_FILE" ]; then
         # shellcheck disable=SC1090
         . "$AGY_STATE_FILE"
@@ -61,7 +58,6 @@ agy_write_state() {
         printf 'NEEDS_REPATCH=%s\n' "${NEEDS_REPATCH:-1}"
         printf 'LAST_REPAIR_AT=%s\n' "${LAST_REPAIR_AT:-}"
         printf 'LAST_SELF_UPDATE_AT=%s\n' "${LAST_SELF_UPDATE_AT:-}"
-        printf 'TCMALLOC_POLICY=%s\n' "${TCMALLOC_POLICY:-gated}"
     } >"$tmp"
     chmod 600 "$tmp"
     mv "$tmp" "$AGY_STATE_FILE"
@@ -104,16 +100,10 @@ agy_select_resolver_mode() {
 }
 
 agy_runtime_command() {
-    local preload_env=()
     local cert_dir_env=()
     local runtime_env=()
     local resolver_mode
     resolver_mode=$(agy_select_resolver_mode)
-    if [ "${AGY_ENABLE_TCMALLOC_SHIM:-0}" = "1" ] || [ "${TCMALLOC_POLICY:-gated}" = "default" ]; then
-        if [ -f "$AGY_TCMALLOC_SHIM" ]; then
-            preload_env=("LD_PRELOAD=$AGY_TCMALLOC_SHIM")
-        fi
-    fi
     if [ -d "$AGY_CERT_DIR" ]; then
         cert_dir_env=("SSL_CERT_DIR=$AGY_CERT_DIR")
     fi
@@ -121,8 +111,7 @@ agy_runtime_command() {
         GODEBUG="${GODEBUG:-netdns=cgo}" \
         SSL_CERT_FILE="$AGY_CERT_FILE" \
         LD_LIBRARY_PATH="$AGY_SHIM_DIR:$AGY_GLIBC_LIB" \
-        "${cert_dir_env[@]}" \
-        "${preload_env[@]}")
+        "${cert_dir_env[@]}")
     if [ "$resolver_mode" = "proot" ] && command -v proot >/dev/null 2>&1 && [ -f "$AGY_RESOLV_CONF" ]; then
         proot -b "$AGY_RESOLV_CONF:/etc/resolv.conf" "${runtime_env[@]}" "$@"
     else
@@ -201,7 +190,6 @@ agy_make_case() {
         printf 'state_file=%s\n' "$AGY_STATE_FILE"
         printf 'loader=%s exists=%s\n' "$AGY_LOADER" "$([ -x "$AGY_LOADER" ] && echo yes || echo no)"
         printf 'cert_file=%s exists=%s\n' "$AGY_CERT_FILE" "$([ -f "$AGY_CERT_FILE" ] && echo yes || echo no)"
-        printf 'tcmalloc_policy=%s\n' "${TCMALLOC_POLICY:-gated}"
     } >"$case_dir/env.log"
     {
         printf 'You are diagnosing a Termux native agy wrapper failure.\n\n'
@@ -220,18 +208,6 @@ agy_make_case() {
     mv "$case_dir/repair_prompt.redacted" "$case_dir/repair_prompt.txt"
     agy_set_last_case "$case_dir"
     printf '%s\n' "$case_dir"
-}
-
-agy_faccessat2_supported() {
-    python3 - <<'PY' >/dev/null 2>&1
-import ctypes
-import errno
-import os
-libc = ctypes.CDLL("libc.so.6", use_errno=True)
-ret = libc.syscall(439, -100, b"/", os.F_OK, 0)
-err = ctypes.get_errno()
-raise SystemExit(0 if ret == 0 or err not in (errno.ENOSYS, errno.EPERM) else 1)
-PY
 }
 
 agy_wrapper_coherent() {
@@ -334,7 +310,6 @@ agy_repair_unlocked() {
     NEEDS_REPATCH=0
     LAST_REPAIR_AT="$(date -Is)"
     LAST_SELF_UPDATE_AT="${LAST_SELF_UPDATE_AT:-}"
-    TCMALLOC_POLICY="${TCMALLOC_POLICY:-gated}"
     agy_write_state
     rm -rf "$tmp_dir"
     printf 'agy repair complete: %s\n' "$reason" >&2
@@ -571,8 +546,7 @@ agy_status() {
     printf 'proot availability: %s\n' "$(command -v proot >/dev/null 2>&1 && echo available || echo unavailable)"
     printf 'glibc hosts: %s\n' "$AGY_PREFIX/glibc/etc/hosts $([ -f "$AGY_PREFIX/glibc/etc/hosts" ] && echo present || echo missing)"
     printf 'glibc nsswitch: %s\n' "$AGY_PREFIX/glibc/etc/nsswitch.conf $([ -f "$AGY_PREFIX/glibc/etc/nsswitch.conf" ] && echo present || echo missing)"
-    printf 'tcmalloc shim policy: %s\n' "${TCMALLOC_POLICY:-gated}"
-    printf 'tcmalloc shim file: %s (%s)\n' "$AGY_TCMALLOC_SHIM" "$([ -f "$AGY_TCMALLOC_SHIM" ] && echo present || echo missing)"
+    printf 'tcmalloc shim policy: removed from runtime; source retained under experiments/\n'
     printf 'update broker: manifest sha512 verified tarball replacement\n'
     printf 'last diagnostic case: %s\n' "$(agy_last_case_path)"
 }
