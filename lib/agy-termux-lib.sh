@@ -324,7 +324,7 @@ agy_repair_unlocked() {
     LAST_SELF_UPDATE_AT="${LAST_SELF_UPDATE_AT:-}"
     agy_write_state
     rm -rf "$tmp_dir"
-    printf 'agy repair complete: %s\n' "$reason" >&2
+    printf 'agy: runtime ready (%s)\n' "$reason" >&2
 }
 
 agy_repair() {
@@ -333,7 +333,7 @@ agy_repair() {
 
 agy_preflight() {
     if agy_needs_repatch; then
-        printf 'agy preflight: repairing runtime copy...\n' >&2
+        printf 'agy: preparing runtime copy...\n' >&2
         agy_repair preflight
     fi
 }
@@ -388,7 +388,7 @@ agy_update_broker_once() {
         current="none"
     fi
 
-    printf 'agy wrapper: checking %s update source...\n' "$source_label" >&2
+    printf 'agy: checking %s update source...\n' "$source_label" >&2
     set +e
     curl -fsSL "$manifest_url" >"$manifest" 2>"$tmp_dir/update.log"
     status=$?
@@ -401,14 +401,14 @@ agy_update_broker_once() {
 
     latest=$(agy_manifest_version "$manifest")
     if [ -z "$latest" ]; then
-        printf 'agy wrapper: update manifest did not contain a version.\n' >"$tmp_dir/update.log"
+        printf 'agy: update manifest did not contain a version.\n' >"$tmp_dir/update.log"
         agy_make_case 73 "$tmp_dir/update.log" >/dev/null
         rm -rf "$tmp_dir"
         return 73
     fi
 
     if [ "$current" = "$latest" ] && [ -x "$AGY_RAW" ]; then
-        printf 'agy wrapper: already on upstream version %s.\n' "$latest" >&2
+        printf 'agy: already on upstream version %s.\n' "$latest" >&2
         rm -rf "$tmp_dir"
         return 0
     fi
@@ -417,13 +417,13 @@ agy_update_broker_once() {
     url=$(agy_manifest_field "$manifest" url)
     expected_sha=$(agy_manifest_field "$manifest" sha512)
     if [ -z "$url" ] || [ -z "$expected_sha" ]; then
-        printf 'agy wrapper: update manifest missing url or sha512.\n' >"$tmp_dir/update.log"
+        printf 'agy: update manifest missing url or sha512.\n' >"$tmp_dir/update.log"
         agy_make_case 74 "$tmp_dir/update.log" >/dev/null
         rm -rf "$tmp_dir"
         return 74
     fi
 
-    printf 'agy wrapper: updating raw agy %s -> %s from %s...\n' "${current:-unknown}" "$latest" "$source_label" >&2
+    printf 'agy: updating official binary %s -> %s from %s...\n' "${current:-unknown}" "$latest" "$source_label" >&2
     set +e
     curl -fsSL "$url" >"$tmp_dir/agy.tgz" 2>"$tmp_dir/update.log"
     status=$?
@@ -474,7 +474,7 @@ agy_update_broker_once() {
     if [ -n "$before" ] && [ -n "$after" ] && [ "$before" != "$after" ]; then
         agy_mark_raw_changed
     fi
-    printf 'agy wrapper: rebuilding runtime copy after update check...\n' >&2
+    printf 'agy: rebuilding runtime copy after update check...\n' >&2
     if ! agy_repair wrapper-update; then
         rm -rf "$tmp_dir"
         return 77
@@ -491,18 +491,18 @@ agy_update_broker() {
     status=$?
 
     if [ "$mode" != "explicit" ]; then
-        printf 'agy wrapper: update check failed; continuing with current runtime copy.\n' >&2
+        printf 'agy: update check failed; continuing with current runtime copy.\n' >&2
         return 0
     fi
 
     if [ -z "${AGY_VERIFIED_FALLBACK_VERSION:-}" ]; then
-        printf 'agy wrapper: current update failed and no verified fallback version is configured.\n' >&2
+        printf 'agy: current update failed and no verified fallback version is configured.\n' >&2
         return "$status"
     fi
 
     fallback_url=$(agy_versioned_manifest_url "$AGY_VERIFIED_FALLBACK_VERSION")
     fallback_label="verified fallback $AGY_VERIFIED_FALLBACK_VERSION"
-    printf 'agy wrapper: current update failed; trying %s...\n' "$fallback_label" >&2
+    printf 'agy: current update failed; trying %s...\n' "$fallback_label" >&2
     agy_update_broker_once "$fallback_url" "$fallback_label"
 }
 
