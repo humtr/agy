@@ -29,6 +29,18 @@ AGY_RESOLV_CONF="${AGY_RESOLV_CONF:-$AGY_PREFIX/etc/resolv.conf}"
 AGY_RESOLVER_MODE="${AGY_RESOLVER_MODE:-auto}"
 AGY_RESOLVER_PROBE_HOST="${AGY_RESOLVER_PROBE_HOST:-oauth2.googleapis.com}"
 AGY_MANIFEST_URL="${AGY_MANIFEST_URL:-https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_arm64.json}"
+AGY_VERSIONED_MANIFEST_BASE="${AGY_VERSIONED_MANIFEST_BASE:-https://storage.googleapis.com/antigravity-public/antigravity-cli}"
+if [ -z "${AGY_FALLBACK_VERSION_FILE:-}" ]; then
+    if [ -f "$AGY_LIB_DIR/verified-agy-version.env" ]; then
+        AGY_FALLBACK_VERSION_FILE="$AGY_LIB_DIR/verified-agy-version.env"
+    else
+        AGY_FALLBACK_VERSION_FILE="$AGY_PROJECT_ROOT/config/verified-agy-version.env"
+    fi
+fi
+if [ -z "${AGY_VERIFIED_FALLBACK_VERSION:-}" ] && [ -f "$AGY_FALLBACK_VERSION_FILE" ]; then
+    # shellcheck disable=SC1090
+    . "$AGY_FALLBACK_VERSION_FILE"
+fi
 
 agy_sha256() {
     [ -f "$1" ] || return 0
@@ -349,12 +361,22 @@ import json
 import sys
 from pathlib import Path
 
-print(json.loads(Path(sys.argv[1]).read_text()).get(sys.argv[2], ""))
+data = json.loads(Path(sys.argv[1]).read_text())
+field = sys.argv[2]
+value = data.get(field, "")
+if not value:
+    value = data.get("platforms", {}).get("linux-arm", {}).get(field, "")
+print(value)
 PY
 }
 
-agy_update_broker() {
-    local mode="${1:-auto}"
+agy_versioned_manifest_url() {
+    printf '%s/%s/manifest.json\n' "$AGY_VERSIONED_MANIFEST_BASE" "$1"
+}
+
+agy_update_broker_once() {
+    local manifest_url="$1"
+    local source_label="$2"
     local before after current latest tmp_dir manifest status
 
     tmp_dir=$(mktemp -d "$AGY_STATE_DIR/update.XXXXXX") || return 1
@@ -366,37 +388,23 @@ agy_update_broker() {
         current="none"
     fi
 
-    printf 'agy wrapper: checking for upstream update...\n' >&2
+    printf 'agy wrapper: checking %s update source...\n' "$source_label" >&2
     set +e
-    curl -fsSL "$AGY_MANIFEST_URL" >"$manifest" 2>"$tmp_dir/update.log"
+    curl -fsSL "$manifest_url" >"$manifest" 2>"$tmp_dir/update.log"
     status=$?
     set -e
     if [ "$status" -ne 0 ]; then
-        if [ "$mode" = "explicit" ]; then
-            agy_make_case "$status" "$tmp_dir/update.log" >/dev/null
-            rm -rf "$tmp_dir"
-            return "$status"
-        fi
-        case_dir=$(agy_make_case "$status" "$tmp_dir/update.log")
-        printf 'agy wrapper: update check failed; continuing with current patched runtime.\n' >&2
-        printf 'Update diagnostic case: %s\n' "$case_dir" >&2
+        agy_make_case "$status" "$tmp_dir/update.log" >/dev/null
         rm -rf "$tmp_dir"
-        return 0
+        return "$status"
     fi
 
     latest=$(agy_manifest_version "$manifest")
     if [ -z "$latest" ]; then
         printf 'agy wrapper: update manifest did not contain a version.\n' >"$tmp_dir/update.log"
-        if [ "$mode" = "explicit" ]; then
-            agy_make_case 73 "$tmp_dir/update.log" >/dev/null
-            rm -rf "$tmp_dir"
-            return 73
-        fi
-        case_dir=$(agy_make_case 73 "$tmp_dir/update.log")
-        printf 'agy wrapper: update check failed; continuing with current patched runtime.\n' >&2
-        printf 'Update diagnostic case: %s\n' "$case_dir" >&2
+        agy_make_case 73 "$tmp_dir/update.log" >/dev/null
         rm -rf "$tmp_dir"
-        return 0
+        return 73
     fi
 
     if [ "$current" = "$latest" ] && [ -x "$AGY_RAW" ]; then
@@ -410,49 +418,28 @@ agy_update_broker() {
     expected_sha=$(agy_manifest_field "$manifest" sha512)
     if [ -z "$url" ] || [ -z "$expected_sha" ]; then
         printf 'agy wrapper: update manifest missing url or sha512.\n' >"$tmp_dir/update.log"
-        if [ "$mode" = "explicit" ]; then
-            agy_make_case 74 "$tmp_dir/update.log" >/dev/null
-            rm -rf "$tmp_dir"
-            return 74
-        fi
-        case_dir=$(agy_make_case 74 "$tmp_dir/update.log")
-        printf 'agy wrapper: update check failed; continuing with current patched runtime.\n' >&2
-        printf 'Update diagnostic case: %s\n' "$case_dir" >&2
+        agy_make_case 74 "$tmp_dir/update.log" >/dev/null
         rm -rf "$tmp_dir"
-        return 0
+        return 74
     fi
 
-    printf 'agy wrapper: updating raw agy %s -> %s...\n' "${current:-unknown}" "$latest" >&2
+    printf 'agy wrapper: updating raw agy %s -> %s from %s...\n' "${current:-unknown}" "$latest" "$source_label" >&2
     set +e
     curl -fsSL "$url" >"$tmp_dir/agy.tgz" 2>"$tmp_dir/update.log"
     status=$?
     set -e
     if [ "$status" -ne 0 ]; then
-        if [ "$mode" = "explicit" ]; then
-            agy_make_case "$status" "$tmp_dir/update.log" >/dev/null
-            rm -rf "$tmp_dir"
-            return "$status"
-        fi
-        case_dir=$(agy_make_case "$status" "$tmp_dir/update.log")
-        printf 'agy wrapper: update download failed; continuing with current patched runtime.\n' >&2
-        printf 'Update diagnostic case: %s\n' "$case_dir" >&2
+        agy_make_case "$status" "$tmp_dir/update.log" >/dev/null
         rm -rf "$tmp_dir"
-        return 0
+        return "$status"
     fi
 
     actual_sha=$(sha512sum "$tmp_dir/agy.tgz" | awk '{print $1}')
     if [ "$actual_sha" != "$expected_sha" ]; then
         printf 'sha512 mismatch\nexpected=%s\nactual=%s\n' "$expected_sha" "$actual_sha" >"$tmp_dir/update.log"
-        if [ "$mode" = "explicit" ]; then
-            agy_make_case 75 "$tmp_dir/update.log" >/dev/null
-            rm -rf "$tmp_dir"
-            return 75
-        fi
-        case_dir=$(agy_make_case 75 "$tmp_dir/update.log")
-        printf 'agy wrapper: update verification failed; continuing with current patched runtime.\n' >&2
-        printf 'Update diagnostic case: %s\n' "$case_dir" >&2
+        agy_make_case 75 "$tmp_dir/update.log" >/dev/null
         rm -rf "$tmp_dir"
-        return 0
+        return 75
     fi
 
     mkdir -p "$tmp_dir/extract"
@@ -461,31 +448,17 @@ agy_update_broker() {
     status=$?
     set -e
     if [ "$status" -ne 0 ]; then
-        if [ "$mode" = "explicit" ]; then
-            agy_make_case "$status" "$tmp_dir/update.log" >/dev/null
-            rm -rf "$tmp_dir"
-            return "$status"
-        fi
-        case_dir=$(agy_make_case "$status" "$tmp_dir/update.log")
-        printf 'agy wrapper: update extract failed; continuing with current patched runtime.\n' >&2
-        printf 'Update diagnostic case: %s\n' "$case_dir" >&2
+        agy_make_case "$status" "$tmp_dir/update.log" >/dev/null
         rm -rf "$tmp_dir"
-        return 0
+        return "$status"
     fi
 
     extracted="$tmp_dir/extract/antigravity"
     if [ ! -s "$extracted" ]; then
         printf 'expected extracted antigravity binary not found\n' >"$tmp_dir/update.log"
-        if [ "$mode" = "explicit" ]; then
-            agy_make_case 76 "$tmp_dir/update.log" >/dev/null
-            rm -rf "$tmp_dir"
-            return 76
-        fi
-        case_dir=$(agy_make_case 76 "$tmp_dir/update.log")
-        printf 'agy wrapper: update archive layout unsupported; continuing with current patched runtime.\n' >&2
-        printf 'Update diagnostic case: %s\n' "$case_dir" >&2
+        agy_make_case 76 "$tmp_dir/update.log" >/dev/null
         rm -rf "$tmp_dir"
-        return 0
+        return 76
     fi
 
     chmod 755 "$extracted"
@@ -501,9 +474,36 @@ agy_update_broker() {
     if [ -n "$before" ] && [ -n "$after" ] && [ "$before" != "$after" ]; then
         agy_mark_raw_changed
     fi
-    printf 'agy wrapper: rebuilding patched runtime after update check...\n' >&2
-    agy_repair wrapper-update
+    printf 'agy wrapper: rebuilding runtime copy after update check...\n' >&2
+    if ! agy_repair wrapper-update; then
+        rm -rf "$tmp_dir"
+        return 77
+    fi
     rm -rf "$tmp_dir"
+}
+
+agy_update_broker() {
+    local mode="${1:-auto}" status fallback_url fallback_label
+
+    if agy_update_broker_once "$AGY_MANIFEST_URL" "current"; then
+        return 0
+    fi
+    status=$?
+
+    if [ "$mode" != "explicit" ]; then
+        printf 'agy wrapper: update check failed; continuing with current runtime copy.\n' >&2
+        return 0
+    fi
+
+    if [ -z "${AGY_VERIFIED_FALLBACK_VERSION:-}" ]; then
+        printf 'agy wrapper: current update failed and no verified fallback version is configured.\n' >&2
+        return "$status"
+    fi
+
+    fallback_url=$(agy_versioned_manifest_url "$AGY_VERIFIED_FALLBACK_VERSION")
+    fallback_label="verified fallback $AGY_VERIFIED_FALLBACK_VERSION"
+    printf 'agy wrapper: current update failed; trying %s...\n' "$fallback_label" >&2
+    agy_update_broker_once "$fallback_url" "$fallback_label"
 }
 
 agy_auto_update() {

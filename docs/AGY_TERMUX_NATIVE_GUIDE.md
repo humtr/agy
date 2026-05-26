@@ -174,6 +174,12 @@ diagnostic branch.
 
 ## Setup And Repair
 
+One-command fresh install:
+
+```bash
+pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/humtr/agy/main/install.sh | bash
+```
+
 Fresh install after cloning the repository:
 
 ```bash
@@ -188,6 +194,9 @@ The generated wrappers source the installed support library at
 `~/.local/lib/agy-termux/lib.sh`, not the cloned repository. The repository is
 the install/update source; the installed files are the runtime source. Preflight
 does not compare against the repository on every invocation.
+
+The installer does not bootstrap glibc. It verifies the glibc loader and libc
+paths and stops with guidance if they are missing.
 
 Status:
 
@@ -218,6 +227,12 @@ agy update
 The update broker reads the official manifest, verifies the tarball `sha512`,
 replaces only the raw `~/.local/bin/agy`, then rebuilds the runtime copy. It does not
 run auth login.
+
+If an explicit install or `agy update` cannot use the current manifest path, the
+broker retries the official versioned manifest recorded in
+`config/verified-agy-version.env`. This fallback is for the official `agy`
+binary only. Wrapper code does not auto-rollback; wrapper failures are handled
+by Git revert/fix before publishing.
 
 ## What This Does Not Promise
 
