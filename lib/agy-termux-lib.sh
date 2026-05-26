@@ -13,11 +13,11 @@ AGY_USER_WRAPPER="${AGY_USER_WRAPPER:-$AGY_HOME/bin/agy}"
 AGY_STATE_DIR="${AGY_STATE_DIR:-$AGY_HOME/.local/share/agy-termux}"
 AGY_STATE_FILE="${AGY_STATE_FILE:-$AGY_STATE_DIR/state.env}"
 AGY_DOCTOR_BASE="${AGY_DOCTOR_BASE:-$AGY_STATE_DIR/doctor}"
-if [ -z "${AGY_PATCH_SCRIPT:-}" ]; then
-    if [ -f "$AGY_LIB_DIR/patch_agy.py" ]; then
-        AGY_PATCH_SCRIPT="$AGY_LIB_DIR/patch_agy.py"
+if [ -z "${AGY_RUNTIME_BUILDER:-}" ]; then
+    if [ -f "$AGY_LIB_DIR/build-runtime.py" ]; then
+        AGY_RUNTIME_BUILDER="$AGY_LIB_DIR/build-runtime.py"
     else
-        AGY_PATCH_SCRIPT="$AGY_PROJECT_ROOT/patches/patch_agy.py"
+        AGY_RUNTIME_BUILDER="$AGY_PROJECT_ROOT/tools/build-runtime.py"
     fi
 fi
 AGY_LOADER="${AGY_LOADER:-$AGY_PREFIX/glibc/lib/ld-linux-aarch64.so.1}"
@@ -277,21 +277,21 @@ agy_repair_unlocked() {
     tmp_dir=$(mktemp -d "$AGY_STATE_DIR/repair.XXXXXX") || return 1
     candidate="$tmp_dir/agy"
 
-    if ! python3 "$AGY_PATCH_SCRIPT" "$AGY_RAW" --output "$candidate" >"$tmp_dir/patch.log" 2>&1; then
-        agy_make_case 70 "$tmp_dir/patch.log" >/dev/null
+    if ! python3 "$AGY_RUNTIME_BUILDER" "$AGY_RAW" --output "$candidate" >"$tmp_dir/build.log" 2>&1; then
+        agy_make_case 70 "$tmp_dir/build.log" >/dev/null
         rm -rf "$tmp_dir"
         return 1
     fi
     if command -v patchelf >/dev/null 2>&1; then
-        if ! patchelf --set-interpreter "$AGY_LOADER" "$candidate" >>"$tmp_dir/patch.log" 2>&1; then
-            agy_make_case 71 "$tmp_dir/patch.log" >/dev/null
+        if ! patchelf --set-interpreter "$AGY_LOADER" "$candidate" >>"$tmp_dir/build.log" 2>&1; then
+            agy_make_case 71 "$tmp_dir/build.log" >/dev/null
             rm -rf "$tmp_dir"
             return 1
         fi
     fi
     chmod 755 "$candidate"
-    if ! agy_run_candidate "$candidate" --version >>"$tmp_dir/patch.log" 2>&1; then
-        agy_make_case 72 "$tmp_dir/patch.log" >/dev/null
+    if ! agy_run_candidate "$candidate" --version >>"$tmp_dir/build.log" 2>&1; then
+        agy_make_case 72 "$tmp_dir/build.log" >/dev/null
         rm -rf "$tmp_dir"
         return 1
     fi

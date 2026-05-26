@@ -15,9 +15,9 @@ Status: required.
 Evidence:
 
 - The current runtime is generated from the raw official `agy` binary by
-  `patches/patch_agy.py`.
-- The patch script refuses output if no patches are applied or if expected VA39
-  patch patterns are missing.
+  `tools/build-runtime.py`.
+- The runtime builder refuses output if no rewrites are applied or if expected
+  VA39 rewrite patterns are missing.
 - The patched runtime passed `--version`, user-driven OAuth login, update check,
   and a real `--print` prompt in native resolver mode.
 
@@ -34,14 +34,14 @@ Status: required.
 Evidence:
 
 - Android/Termux compatibility can fail on glibc-oriented syscall paths.
-- The patch script rewrites the known `faccessat2` wrapper pattern unless
+- The runtime builder rewrites the known `faccessat2` wrapper pattern unless
   explicitly skipped for manual experiments.
 
 Policy:
 
 - Keep the `faccessat2` compatibility rewrite enabled by default.
-- Treat `--skip-syscall` as a patch-script diagnostic option, not the normal
-  runtime path.
+- Treat `--skip-syscall-compat` as a runtime-builder diagnostic option, not the
+  normal runtime path.
 
 ## Decision 3: Resolver Strategy
 

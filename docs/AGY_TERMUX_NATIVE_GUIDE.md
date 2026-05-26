@@ -1,6 +1,6 @@
 # Antigravity CLI (`agy`) Native Termux Guide
 
-This project is a Termux-specific native wrapper and binary-patch workflow for
+This project is a Termux-specific native wrapper and runtime-build workflow for
 running the official Linux ARM64 Antigravity CLI (`agy`) on Android/Termux.
 
 The current environment already completed `agy auth login`. Do not rerun auth
@@ -21,7 +21,7 @@ The maintained layout is:
   Thin glibc/env execution wrapper for the patched runtime.
 
 ~/.local/lib/agy-termux/lib.sh
-~/.local/lib/agy-termux/patch_agy.py
+~/.local/lib/agy-termux/build-runtime.py
   Installed runtime support files used by preflight, update, repair, and
   diagnostics. Normal `agy` execution does not source files from the cloned
   project directory.
@@ -31,7 +31,7 @@ The maintained layout is:
   execution, diagnostic capture, and postflight raw-change detection.
 
 ~/.local/share/agy-termux/state.env
-  Hash/state file recording which raw binary produced the patched runtime.
+  Hash/state file recording which raw binary produced the runtime copy.
 
 ~/.local/share/agy-termux/doctor/
   Diagnostic case directory for non-auth troubleshooting.
@@ -63,18 +63,18 @@ The main reliability mechanism is:
 2. Wrapper-controlled `agy update` check before normal commands.
 3. Transactional repatch if raw/patched/state/wrapper validation fails or the
    updater changes the raw binary.
-4. Patched runtime execution only after validation.
+4. Runtime-copy execution only after validation.
 5. Postflight raw-hash detection.
 
 Preflight checks:
 
 - raw `~/.local/bin/agy` exists
 - patched `~/.local/lib/agy-termux/agy` exists and is executable
-- `~/.local/lib/agy-termux/run` wrapper references the patched runtime
+- `~/.local/lib/agy-termux/run` wrapper references the runtime copy
 - glibc loader exists
 - Termux CA bundle exists
 - `state.env` matches current raw and patched hashes
-- patched runtime passes `--version`
+- runtime copy passes `--version`
 
 Repair builds a candidate patched binary in the state directory, applies the
 VA39 and `faccessat2` compatibility patches to that copy, sets the glibc loader
@@ -84,16 +84,16 @@ then atomically moves the candidate into place.
 ## Updating Agy
 
 If the official updater replaces `~/.local/bin/agy`, the next wrapper invocation
-detects the raw hash mismatch and rebuilds the patched runtime before normal execution.
+detects the raw hash mismatch and rebuilds the runtime copy before normal execution.
 For normal commands, the wrapper checks the official Linux ARM64 manifest first.
-If the manifest version is newer than the current patched runtime, the wrapper
+If the manifest version is newer than the current runtime copy, the wrapper
 downloads the manifest tarball, verifies its `sha512`, replaces only the raw
-`~/.local/bin/agy`, and immediately rebuilds the patched runtime before continuing.
+`~/.local/bin/agy`, and immediately rebuilds the runtime copy before continuing.
 
 Manual `agy update` is still allowed. If that command changes the raw binary,
 the wrapper performs the same manifest/tarball update broker instead of running
 the patched binary's built-in updater. This is intentional: running the built-in
-updater from the patched runtime can update the currently executed patched path rather
+updater from the runtime copy can update the currently executed runtime path rather
 than the preserved raw path.
 
 Known limitation: if the patched process internally installs a new raw binary
@@ -178,7 +178,7 @@ Fresh install after cloning the repository:
 
 ```bash
 cd ~/prj/agy
-bash bin/setup_agy_termux.sh --install
+bash bin/install-runtime.sh --install
 ```
 
 This installs `~/bin/agy` and `~/.local/lib/agy-termux/run`, downloads the current raw
@@ -192,21 +192,21 @@ does not compare against the repository on every invocation.
 Status:
 
 ```bash
-bash bin/setup_agy_termux.sh --status
+bash bin/install-runtime.sh --status
 ```
 
 Install wrappers:
 
 ```bash
-bash bin/setup_agy_termux.sh --install-wrappers
+bash bin/install-runtime.sh --install-wrappers
 ```
 
 This only installs wrappers and does not download or repair binaries.
 
-Rebuild patched runtime:
+Rebuild runtime copy:
 
 ```bash
-bash bin/setup_agy_termux.sh --repair
+bash bin/install-runtime.sh --repair
 ```
 
 Update raw agy through the wrapper-managed broker:
@@ -216,7 +216,7 @@ agy update
 ```
 
 The update broker reads the official manifest, verifies the tarball `sha512`,
-replaces only the raw `~/.local/bin/agy`, then rebuilds the patched runtime. It does not
+replaces only the raw `~/.local/bin/agy`, then rebuilds the runtime copy. It does not
 run auth login.
 
 ## What This Does Not Promise

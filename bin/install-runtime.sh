@@ -7,18 +7,18 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
     cat <<'EOF'
-Usage: bash bin/setup_agy_termux.sh [--install|--status|--repair|--install-wrappers|--init-state]
+Usage: bash bin/install-runtime.sh [--install|--status|--repair|--install-wrappers|--init-state]
 
 Default action: --status
 
 Actions:
-  --install          Install wrappers, download/update raw agy, and build the patched runtime.
+  --install          Install wrappers, download/update raw agy, and build the runtime copy.
   --status           Print current wrapper/runtime status.
   --repair           Transactionally rebuild ~/.local/lib/agy-termux/agy from raw agy.
   --install-wrappers Install ~/bin/agy and ~/.local/lib/agy-termux/run wrappers.
-  --init-state       Initialize state.env after validating the current patched runtime.
+  --init-state       Initialize state.env after validating the current runtime copy.
 
-This script never patches the raw official agy binary in place and never runs
+This script never modifies the raw official agy binary in place and never runs
 agy auth login.
 EOF
 }
@@ -27,7 +27,7 @@ install_wrappers() {
     mkdir -p "$(dirname "$AGY_USER_WRAPPER")" "$AGY_RUNTIME_DIR" "$AGY_STATE_DIR"
 
     install -m 755 "$ROOT_DIR/lib/agy-termux-lib.sh" "$AGY_RUNTIME_DIR/lib.sh"
-    install -m 755 "$ROOT_DIR/patches/patch_agy.py" "$AGY_RUNTIME_DIR/patch_agy.py"
+    install -m 755 "$ROOT_DIR/tools/build-runtime.py" "$AGY_RUNTIME_DIR/build-runtime.py"
 
     cat >"$AGY_USER_WRAPPER" <<EOF
 #!/usr/bin/env bash
@@ -65,12 +65,12 @@ EOF
     echo "  $AGY_EXEC_WRAPPER"
     echo "Installed runtime support:"
     echo "  $AGY_RUNTIME_DIR/lib.sh"
-    echo "  $AGY_RUNTIME_DIR/patch_agy.py"
+    echo "  $AGY_RUNTIME_DIR/build-runtime.py"
 }
 
 init_state() {
     if ! agy_validate_patched; then
-        echo "Current patched runtime is not valid; run --repair first." >&2
+        echo "Current runtime copy is not valid; run --repair first." >&2
         return 1
     fi
     PATCHED_FROM_ORIGINAL_SHA256="$(agy_sha256 "$AGY_RAW")"
