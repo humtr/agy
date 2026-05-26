@@ -49,6 +49,7 @@ agy_run_patched "\$@"
 EOF
 
     chmod 755 "$AGY_USER_WRAPPER" "$AGY_EXEC_WRAPPER"
+    ensure_user_path
 
     mkdir -p "$AGY_SHIM_DIR"
     if [ -f "$AGY_GLIBC_LIB/libc.so.6" ]; then
@@ -68,6 +69,27 @@ EOF
     echo "  $AGY_RUNTIME_DIR/lib.sh"
     echo "  $AGY_RUNTIME_DIR/build-runtime.py"
     echo "  $AGY_RUNTIME_DIR/verified-agy-version.env"
+    echo "Ensured startup PATH includes:"
+    echo "  $HOME/bin"
+}
+
+ensure_user_path() {
+    local rc marker line
+    marker="# agy-termux PATH"
+    line='export PATH="$HOME/bin:$PATH"'
+
+    for rc in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc"; do
+        if [ -f "$rc" ] && grep -Fq "$marker" "$rc"; then
+            continue
+        fi
+        if [ -f "$rc" ] && { grep -Fq '$HOME/bin' "$rc" || grep -Fq '~/bin' "$rc"; }; then
+            continue
+        fi
+        {
+            printf '\n%s\n' "$marker"
+            printf '%s\n' "$line"
+        } >>"$rc"
+    done
 }
 
 init_state() {

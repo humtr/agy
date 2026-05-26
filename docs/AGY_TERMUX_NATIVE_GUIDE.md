@@ -189,6 +189,13 @@ cd ~/prj/agy
 bash bin/install-runtime.sh --install
 ```
 
+If the current shell still cannot find `agy` immediately after install, refresh
+the shell PATH or open a new Termux session:
+
+```bash
+export PATH="$HOME/bin:$PATH"
+```
+
 The `installer` branch only adds a convenience `install.sh` bootstrapper around
 this same runtime workflow.
 
