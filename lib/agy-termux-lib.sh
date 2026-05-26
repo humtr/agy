@@ -377,6 +377,7 @@ agy_versioned_manifest_url() {
 agy_update_broker_once() {
     local manifest_url="$1"
     local source_label="$2"
+    local display_mode="${3:-auto}"
     local before after current latest tmp_dir manifest status
 
     tmp_dir=$(mktemp -d "$AGY_STATE_DIR/update.XXXXXX") || return 1
@@ -388,7 +389,11 @@ agy_update_broker_once() {
         current="none"
     fi
 
-    printf 'agy: checking %s update source...\n' "$source_label" >&2
+    if [ "$display_mode" = "run" ]; then
+        printf 'agy: checking for updates before launch...\n' >&2
+    else
+        printf 'agy: checking %s update source...\n' "$source_label" >&2
+    fi
     set +e
     curl -fsSL "$manifest_url" >"$manifest" 2>"$tmp_dir/update.log"
     status=$?
@@ -408,7 +413,11 @@ agy_update_broker_once() {
     fi
 
     if [ "$current" = "$latest" ] && [ -x "$AGY_RAW" ]; then
-        printf 'agy: already on upstream version %s.\n' "$latest" >&2
+        if [ "$display_mode" = "run" ]; then
+            printf 'agy: version %s is current.\n' "$latest" >&2
+        else
+            printf 'agy: already on upstream version %s.\n' "$latest" >&2
+        fi
         rm -rf "$tmp_dir"
         return 0
     fi
@@ -423,7 +432,11 @@ agy_update_broker_once() {
         return 74
     fi
 
-    printf 'agy: updating official binary %s -> %s from %s...\n' "${current:-unknown}" "$latest" "$source_label" >&2
+    if [ "$display_mode" = "run" ]; then
+        printf 'agy: installing update %s -> %s before launch...\n' "${current:-unknown}" "$latest" >&2
+    else
+        printf 'agy: updating official binary %s -> %s from %s...\n' "${current:-unknown}" "$latest" "$source_label" >&2
+    fi
     set +e
     curl -fsSL "$url" >"$tmp_dir/agy.tgz" 2>"$tmp_dir/update.log"
     status=$?
@@ -474,7 +487,7 @@ agy_update_broker_once() {
     if [ -n "$before" ] && [ -n "$after" ] && [ "$before" != "$after" ]; then
         agy_mark_raw_changed
     fi
-    printf 'agy: rebuilding runtime copy after update check...\n' >&2
+    printf 'agy: preparing runtime copy for version %s...\n' "$latest" >&2
     if ! agy_repair wrapper-update; then
         rm -rf "$tmp_dir"
         return 77
@@ -484,8 +497,9 @@ agy_update_broker_once() {
 
 agy_update_broker() {
     local mode="${1:-auto}" status fallback_url fallback_label
+    local display_mode="${2:-$mode}"
 
-    if agy_update_broker_once "$AGY_MANIFEST_URL" "current"; then
+    if agy_update_broker_once "$AGY_MANIFEST_URL" "current" "$display_mode"; then
         return 0
     fi
     status=$?
@@ -503,13 +517,13 @@ agy_update_broker() {
     fallback_url=$(agy_versioned_manifest_url "$AGY_VERIFIED_FALLBACK_VERSION")
     fallback_label="verified fallback $AGY_VERIFIED_FALLBACK_VERSION"
     printf 'agy: current update failed; trying %s...\n' "$fallback_label" >&2
-    agy_update_broker_once "$fallback_url" "$fallback_label"
+    agy_update_broker_once "$fallback_url" "$fallback_label" "$display_mode"
 }
 
 agy_auto_update() {
     [ "${AGY_SKIP_AUTO_UPDATE:-0}" = "1" ] && return 0
     [ "${1:-}" = "auth" ] && return 0
-    agy_update_broker auto
+    agy_update_broker auto run
 }
 
 agy_mark_raw_changed() {
@@ -635,6 +649,7 @@ agy_main() {
     agy_preflight || return $?
     agy_auto_update "${1:-}" || return $?
     agy_preflight || return $?
+    printf 'agy: starting Antigravity CLI...\n' >&2
     local before after temp_raw exit_code case_dir
     before=$(agy_sha256 "$AGY_RAW")
     temp_raw="${TMPDIR:-/tmp}/agy_raw_$$"
