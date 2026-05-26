@@ -390,7 +390,7 @@ agy_update_broker_once() {
     fi
 
     if [ "$display_mode" = "run" ]; then
-        printf 'agy: checking for updates before launch...\n' >&2
+        printf 'agy: checking for updates...\n' >&2
     else
         printf 'agy: checking %s update source...\n' "$source_label" >&2
     fi
@@ -433,7 +433,7 @@ agy_update_broker_once() {
     fi
 
     if [ "$display_mode" = "run" ]; then
-        printf 'agy: installing update %s -> %s before launch...\n' "${current:-unknown}" "$latest" >&2
+        printf 'agy: installing update %s -> %s...\n' "${current:-unknown}" "$latest" >&2
     else
         printf 'agy: updating official binary %s -> %s from %s...\n' "${current:-unknown}" "$latest" "$source_label" >&2
     fi
