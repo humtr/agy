@@ -107,9 +107,35 @@ Antigravity auto-update was confirmed from local binary inspection. This wrapper
 therefore uses update-before-run, verified tarball replacement, detection, and
 repair rather than unsafe `execve` hooks.
 
-Termux DNS is handled by binding `$PREFIX/etc/resolv.conf` over `/etc/resolv.conf`
-for the glibc `agy` runtime with `proot`. This prevents Go's pure resolver from
-using Android-side localhost DNS entries such as `[::1]:53`.
+Resolver handling is controlled by `AGY_RESOLVER_MODE`:
+
+- `auto` is the default. The wrapper probes the glibc resolver first and runs
+  without `proot` if native DNS works.
+- `native` forces the glibc runtime path without `proot`.
+- `proot` forces the older `$PREFIX/etc/resolv.conf` bind over `/etc/resolv.conf`.
+
+The native path uses `GODEBUG=netdns=cgo`, Termux CA certificates, and
+`$PREFIX/glibc/etc/{resolv.conf,nsswitch.conf,hosts}`. On the current verified
+device, native DNS and TLS checks pass without `proot`; OAuth login and real
+prompt execution must still be verified by the user-driven login test before
+removing the fallback.
+
+To test the native path without changing auth state:
+
+```bash
+AGY_RESOLVER_MODE=native AGY_SKIP_AUTO_UPDATE=1 agy --version
+```
+
+Full prootless acceptance requires a user-driven OAuth test:
+
+```bash
+AGY_RESOLVER_MODE=native agy auth login
+```
+
+The user must complete the browser/OAuth flow. Do not paste OAuth callback URLs,
+codes, states, cookies, or tokens into diagnostics. After login completes, verify
+a harmless prompt in native mode. If native login or prompt execution fails while
+`proot` mode works, keep `proot` as the default or fallback.
 
 ## Diagnostic Cases
 

@@ -26,6 +26,8 @@ AGY_SHIM_DIR="${AGY_SHIM_DIR:-$AGY_HOME/.local/glibc-shim}"
 AGY_CERT_FILE="${AGY_CERT_FILE:-$AGY_PREFIX/etc/tls/cert.pem}"
 AGY_CERT_DIR="${AGY_CERT_DIR:-$AGY_PREFIX/etc/tls/certs}"
 AGY_RESOLV_CONF="${AGY_RESOLV_CONF:-$AGY_PREFIX/etc/resolv.conf}"
+AGY_RESOLVER_MODE="${AGY_RESOLVER_MODE:-auto}"
+AGY_RESOLVER_PROBE_HOST="${AGY_RESOLVER_PROBE_HOST:-oauth2.googleapis.com}"
 AGY_TCMALLOC_SHIM="${AGY_TCMALLOC_SHIM:-$AGY_SHIM_DIR/tcmalloc_fix.so}"
 AGY_TCMALLOC_POLICY="${AGY_TCMALLOC_POLICY:-gated}"
 AGY_MANIFEST_URL="${AGY_MANIFEST_URL:-https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_arm64.json}"
@@ -65,10 +67,48 @@ agy_write_state() {
     mv "$tmp" "$AGY_STATE_FILE"
 }
 
+agy_native_resolver_ok() {
+    local getent_bin="$AGY_PREFIX/glibc/bin/getent"
+    [ -f "$AGY_PREFIX/glibc/etc/resolv.conf" ] || return 1
+    [ -f "$AGY_PREFIX/glibc/etc/nsswitch.conf" ] || return 1
+    if [ -x "$getent_bin" ]; then
+        env -u LD_PRELOAD -u LD_LIBRARY_PATH \
+            LD_LIBRARY_PATH="$AGY_GLIBC_LIB" \
+            "$getent_bin" hosts "$AGY_RESOLVER_PROBE_HOST" >/dev/null 2>&1
+        return $?
+    fi
+    return 0
+}
+
+agy_select_resolver_mode() {
+    case "${AGY_RESOLVER_MODE:-auto}" in
+        native)
+            printf 'native\n'
+            ;;
+        proot)
+            printf 'proot\n'
+            ;;
+        auto|"")
+            if agy_native_resolver_ok; then
+                printf 'native\n'
+            elif command -v proot >/dev/null 2>&1 && [ -f "$AGY_RESOLV_CONF" ]; then
+                printf 'proot\n'
+            else
+                printf 'native\n'
+            fi
+            ;;
+        *)
+            printf 'native\n'
+            ;;
+    esac
+}
+
 agy_runtime_command() {
     local preload_env=()
     local cert_dir_env=()
     local runtime_env=()
+    local resolver_mode
+    resolver_mode=$(agy_select_resolver_mode)
     if [ "${AGY_ENABLE_TCMALLOC_SHIM:-0}" = "1" ] || [ "${TCMALLOC_POLICY:-gated}" = "default" ]; then
         if [ -f "$AGY_TCMALLOC_SHIM" ]; then
             preload_env=("LD_PRELOAD=$AGY_TCMALLOC_SHIM")
@@ -78,12 +118,12 @@ agy_runtime_command() {
         cert_dir_env=("SSL_CERT_DIR=$AGY_CERT_DIR")
     fi
     runtime_env=(env -u LD_PRELOAD -u LD_LIBRARY_PATH \
-        GODEBUG="${GODEBUG:-netdns=go}" \
+        GODEBUG="${GODEBUG:-netdns=cgo}" \
         SSL_CERT_FILE="$AGY_CERT_FILE" \
         LD_LIBRARY_PATH="$AGY_SHIM_DIR:$AGY_GLIBC_LIB" \
         "${cert_dir_env[@]}" \
         "${preload_env[@]}")
-    if command -v proot >/dev/null 2>&1 && [ -f "$AGY_RESOLV_CONF" ]; then
+    if [ "$resolver_mode" = "proot" ] && command -v proot >/dev/null 2>&1 && [ -f "$AGY_RESOLV_CONF" ]; then
         proot -b "$AGY_RESOLV_CONF:/etc/resolv.conf" "${runtime_env[@]}" "$@"
     else
         "${runtime_env[@]}" "$@"
@@ -524,8 +564,11 @@ agy_status() {
     printf 'glibc loader: %s (%s)\n' "$AGY_LOADER" "$([ -x "$AGY_LOADER" ] && echo ok || echo missing)"
     printf 'SSL_CERT_FILE: %s (%s)\n' "$AGY_CERT_FILE" "$([ -f "$AGY_CERT_FILE" ] && echo ok || echo missing)"
     printf 'SSL_CERT_DIR: %s (%s)\n' "$AGY_CERT_DIR" "$([ -d "$AGY_CERT_DIR" ] && echo ok || echo missing)"
+    printf 'resolver mode: %s\n' "${AGY_RESOLVER_MODE:-auto}"
+    printf 'resolver selected: %s\n' "$(agy_select_resolver_mode)"
+    printf 'resolver native probe: %s (%s)\n' "$AGY_RESOLVER_PROBE_HOST" "$(agy_native_resolver_ok && echo ok || echo failed)"
     printf 'resolv.conf bind source: %s (%s)\n' "$AGY_RESOLV_CONF" "$([ -f "$AGY_RESOLV_CONF" ] && echo ok || echo missing)"
-    printf 'proot DNS bind: %s\n' "$(command -v proot >/dev/null 2>&1 && echo enabled || echo unavailable)"
+    printf 'proot availability: %s\n' "$(command -v proot >/dev/null 2>&1 && echo available || echo unavailable)"
     printf 'glibc hosts: %s\n' "$AGY_PREFIX/glibc/etc/hosts $([ -f "$AGY_PREFIX/glibc/etc/hosts" ] && echo present || echo missing)"
     printf 'glibc nsswitch: %s\n' "$AGY_PREFIX/glibc/etc/nsswitch.conf $([ -f "$AGY_PREFIX/glibc/etc/nsswitch.conf" ] && echo present || echo missing)"
     printf 'tcmalloc shim policy: %s\n' "${TCMALLOC_POLICY:-gated}"
