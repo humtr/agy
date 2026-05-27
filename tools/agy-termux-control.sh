@@ -233,6 +233,7 @@ agy_debug_bundle() {
     local last
     last=$(agy_last_case_path || true)
     printf 'last_case=%s\n' "${last:-none}"
+    printf 'warning: raw.log may contain sensitive material. Do not share without review.\n'
     if [ -n "${last:-}" ] && [ -d "$last" ]; then
         ls -1 "$last" 2>/dev/null || true
     fi

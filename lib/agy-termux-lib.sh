@@ -17,6 +17,7 @@ AGY_LEGACY_STATE_FILE="${AGY_LEGACY_STATE_FILE:-$AGY_STATE_DIR/state.env}"
 AGY_DOCTOR_BASE="${AGY_DOCTOR_BASE:-$AGY_STATE_DIR/doctor}"
 AGY_LOCK_FILE="${AGY_LOCK_FILE:-$AGY_STATE_DIR/native.lock}"
 AGY_LOCK_WAIT_SECONDS="${AGY_LOCK_WAIT_SECONDS:-30}"
+AGY_DIAG_KEEP="${AGY_DIAG_KEEP:-20}"
 if [ -z "${AGY_RUNTIME_BUILDER:-}" ]; then
     if [ -f "$AGY_LIB_DIR/build-runtime.py" ]; then
         AGY_RUNTIME_BUILDER="$AGY_LIB_DIR/build-runtime.py"
@@ -289,6 +290,7 @@ agy_redact_file() {
         -e 's/(Set-Cookie:[[:space:]]*)[^[:cntrl:]]+/\1[REDACTED]/Ig' \
         -e 's/([?&](access_token|refresh_token|id_token|oauth_token|code|state)=)[^&[:space:]]+/\1[REDACTED]/Ig' \
         -e 's/\b(access_token|refresh_token|id_token|oauth_token|code|state)[[:space:]]*[:=][[:space:]]*[^,[:space:]}"]+/\1=[REDACTED]/Ig' \
+        -e 's/[[:alnum:]._%+-]+@[[:alnum:].-]+\.[[:alpha:]]{2,}/[REDACTED_EMAIL]/g' \
         -e 's#https?://[^[:space:]]*(code|token|state|oauth)[^[:space:]]*#https://[REDACTED_URL]#Ig' \
         -e 's/TESTSECRET/[REDACTED]/g' \
         -e 's/TEST_ACCESS_TOKEN/[REDACTED]/g' \
@@ -328,6 +330,7 @@ agy_make_case() {
         : >"$case_dir/raw.log"
         : >"$case_dir/safe.log"
     fi
+    chmod 600 "$case_dir/raw.log" "$case_dir/safe.log"
     {
         printf 'date=%s\n' "$(date -Is)"
         printf 'exit_code=%s\n' "$exit_code"
@@ -355,8 +358,22 @@ agy_make_case() {
     } >"$case_dir/repair_prompt.txt"
     agy_redact_file "$case_dir/repair_prompt.txt" "$case_dir/repair_prompt.redacted"
     mv "$case_dir/repair_prompt.redacted" "$case_dir/repair_prompt.txt"
+    chmod 600 "$case_dir/repair_prompt.txt" "$case_dir/env.log"
+    agy_diag_prune
     agy_set_last_case "$case_dir"
     printf '%s\n' "$case_dir"
+}
+
+agy_diag_prune() {
+    [ -d "$AGY_DOCTOR_BASE" ] || return 0
+    local keep="$AGY_DIAG_KEEP"
+    local count=0 path
+    while IFS= read -r path; do
+        count=$((count + 1))
+        if [ "$count" -gt "$keep" ]; then
+            rm -rf "$path"
+        fi
+    done < <(ls -1dt "$AGY_DOCTOR_BASE"/* 2>/dev/null || true)
 }
 
 agy_wrapper_coherent() {

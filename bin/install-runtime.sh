@@ -211,20 +211,25 @@ EOF
 }
 
 ensure_user_path() {
-    local rc marker line
-    marker="# agy-termux PATH"
+    local rc marker_begin marker_end line backup
+    marker_begin="# >>> agy native path >>>"
+    marker_end="# <<< agy native path <<<"
     line='export PATH="$HOME/bin:$PATH"'
 
     for rc in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc"; do
-        if [ -f "$rc" ] && grep -Fq "$marker" "$rc"; then
+        [ -f "$rc" ] || touch "$rc"
+        if grep -Fq "$marker_begin" "$rc"; then
             continue
         fi
-        if [ -f "$rc" ] && { grep -Fq '$HOME/bin' "$rc" || grep -Fq '~/bin' "$rc"; }; then
+        if grep -Fq '$HOME/bin' "$rc" || grep -Fq '~/bin' "$rc"; then
             continue
         fi
+        backup="$AGY_STATE_DIR/$(basename "$rc").backup-$(date +%Y%m%d-%H%M%S)"
+        cp -p "$rc" "$backup"
         {
-            printf '\n%s\n' "$marker"
+            printf '\n%s\n' "$marker_begin"
             printf '%s\n' "$line"
+            printf '%s\n' "$marker_end"
         } >>"$rc"
     done
 }
