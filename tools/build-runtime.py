@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import shutil
 import struct
 import sys
@@ -156,6 +157,15 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="skip the faccessat2 compatibility rewrite for diagnostics",
     )
+    parser.add_argument(
+        "--allow-broad-scan",
+        action="store_true",
+        help="allow full-binary scan when google_malloc section is missing (diagnostic only)",
+    )
+    parser.add_argument(
+        "--report-json",
+        help="write machine-readable report JSON to path",
+    )
     return parser.parse_args()
 
 
@@ -297,7 +307,12 @@ def validate_report(report: BuildReport) -> None:
         raise RuntimeError(f"required rewrite pattern missing: {names}")
 
 
-def build_runtime(src: Path, dst: Path, syscall_compat: bool) -> BuildReport:
+def build_runtime(
+    src: Path,
+    dst: Path,
+    syscall_compat: bool,
+    allow_broad_scan: bool,
+) -> BuildReport:
     if not src.exists():
         raise FileNotFoundError(f"input binary does not exist: {src}")
     if src.resolve() == dst.resolve():
@@ -310,8 +325,13 @@ def build_runtime(src: Path, dst: Path, syscall_compat: bool) -> BuildReport:
 
     section_lo, section_hi = find_elf_section(data, RUNTIME_SECTION)
     if section_lo is None or section_hi is None:
+        if not allow_broad_scan:
+            raise RuntimeError(
+                f"{RUNTIME_SECTION} section not found; fail-closed. "
+                "Use --allow-broad-scan for diagnostics."
+            )
         lo, hi = 0, len(data)
-        print(f"{RUNTIME_SECTION} section not found; scanning entire binary.")
+        print(f"{RUNTIME_SECTION} section not found; broad scan enabled by flag.")
     else:
         lo, hi = section_lo, section_hi
         print(
@@ -345,6 +365,22 @@ def print_report(report: BuildReport) -> None:
     print(f"  resolver-path: {report.resolver_path_count}")
     print(f"  total: {report.total}")
 
+def report_to_dict(report: BuildReport) -> dict:
+    return {
+        "bitfield_counts": report.bitfield_counts,
+        "pair_counts": report.pair_counts,
+        "word_counts": report.word_counts,
+        "syscall_count": report.syscall_count,
+        "resolver_path_count": report.resolver_path_count,
+        "total": report.total,
+        "required": {
+            "bitfield": [rule.name for rule in BITFIELD_WINDOW_RULES if rule.required],
+            "pair": [rule.name for rule in PAIR_REWRITE_RULES if rule.required],
+            "word_groups": [group.name for group in WORD_REWRITE_GROUPS if group.required],
+            "resolver_path_required": True,
+        },
+    }
+
 
 def main() -> int:
     args = parse_args()
@@ -358,8 +394,13 @@ def main() -> int:
             src=src,
             dst=dst,
             syscall_compat=not args.skip_syscall_compat,
+            allow_broad_scan=args.allow_broad_scan,
         )
         print_report(report)
+        if args.report_json:
+            out = Path(args.report_json).expanduser()
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(json.dumps(report_to_dict(report), sort_keys=True) + "\n")
         print(f"sha256 output  : {sha256(dst)}")
         print(f"output         : {dst}")
         return 0

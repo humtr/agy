@@ -568,6 +568,31 @@ agy_versioned_manifest_url() {
     printf '%s/%s/manifest.json\n' "$AGY_VERSIONED_MANIFEST_BASE" "$1"
 }
 
+agy_validate_tarball_safe() {
+    local tar_path="$1"
+    python3 - "$tar_path" <<'PY'
+import os,sys,tarfile,pathlib
+
+tar_path=sys.argv[1]
+reject_types={"chr","blk","fifo","dev"}
+with tarfile.open(tar_path,"r:gz") as tf:
+    for m in tf.getmembers():
+        n=m.name
+        p=pathlib.PurePosixPath(n)
+        if not n or n.startswith("/") or p.is_absolute():
+            raise SystemExit(f"unsafe tar entry path: {n}")
+        if ".." in p.parts:
+            raise SystemExit(f"unsafe tar traversal: {n}")
+        if m.issym():
+            raise SystemExit(f"unsafe tar symlink entry: {n}")
+        if m.islnk():
+            raise SystemExit(f"unsafe tar hardlink entry: {n}")
+        if m.ischr() or m.isblk() or m.isfifo() or m.isdev():
+            raise SystemExit(f"unsafe tar special entry: {n}")
+print("ok")
+PY
+}
+
 agy_record_update_failure() {
     local version="$1"
     local status="$2"
@@ -711,6 +736,16 @@ agy_update_broker_once() {
     fi
 
     mkdir -p "$tmp_dir/extract"
+    set +e
+    agy_validate_tarball_safe "$tmp_dir/agy.tgz" >>"$tmp_dir/update.log" 2>&1
+    status=$?
+    set -e
+    if [ "$status" -ne 0 ]; then
+        case_dir=$(agy_make_case "$status" "$tmp_dir/update.log")
+        agy_record_update_failure "$latest" "tar_safety_failed" "$case_dir"
+        rm -rf "$tmp_dir"
+        return 78
+    fi
     set +e
     tar -xzf "$tmp_dir/agy.tgz" -C "$tmp_dir/extract" >>"$tmp_dir/update.log" 2>&1
     status=$?
