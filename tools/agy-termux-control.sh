@@ -7,7 +7,7 @@ AGY_RUNTIME_LIB="${AGY_RUNTIME_LIB:-$AGY_HOME/.local/lib/agy/native/runtime/lib.
 AGY_NATIVE_ROOT="${AGY_NATIVE_ROOT:-$AGY_HOME/.local/lib/agy/native}"
 AGY_RUNTIME_DIR="${AGY_RUNTIME_DIR:-$AGY_NATIVE_ROOT/runtime}"
 AGY_STATE_DIR="${AGY_STATE_DIR:-$AGY_HOME/.local/share/agy/native}"
-AGY_STATE_FILE="${AGY_STATE_FILE:-$AGY_STATE_DIR/state.env}"
+AGY_STATE_FILE="${AGY_STATE_FILE:-$AGY_STATE_DIR/state.json}"
 AGY_PATCHED="${AGY_PATCHED:-$AGY_RUNTIME_DIR/agy}"
 AGY_RAW="${AGY_RAW:-$AGY_NATIVE_ROOT/raw/agy}"
 AGY_LOADER="${AGY_LOADER:-$AGY_PREFIX/glibc/lib/ld-linux-aarch64.so.1}"
@@ -92,7 +92,7 @@ agy_doctor() {
     printf 'shim dir: %s (%s)\n' "$AGY_SHIM_DIR" "$([ -d "$AGY_SHIM_DIR" ] && echo present || echo missing)"
     printf 'resolver source readable: %s (%s)\n' "$AGY_RESOLV_CONF" "$([ -r "$AGY_RESOLV_CONF" ] && echo yes || echo no)"
     printf 'state file: %s (%s)\n' "$AGY_STATE_FILE" "$([ -f "$AGY_STATE_FILE" ] && echo present || echo missing)"
-    lock_file="$AGY_STATE_DIR/repair.lock"
+    lock_file="${AGY_LOCK_FILE:-$AGY_STATE_DIR/native.lock}"
     printf 'update lock file: %s (%s)\n' "$lock_file" "$([ -f "$lock_file" ] && echo present || echo absent)"
     local ld_preload ld_library_path
     ld_preload="${LD_PRELOAD:-}"
@@ -122,11 +122,15 @@ agy_doctor() {
 
 agy_update_termux() {
     if [ "${1:-}" = "--dry-run" ]; then
-        printf 'dry-run: would run Termux raw->patched update pipeline\n'
-        printf 'dry-run: source manifest=%s\n' "$AGY_MANIFEST_URL"
-        return 0
+        agy_with_lock _agy_update_termux_dryrun
+        return $?
     fi
     agy_with_lock _agy_update_termux_apply
+}
+
+_agy_update_termux_dryrun() {
+    printf 'dry-run: would run Termux raw->patched update pipeline\n'
+    printf 'dry-run: source manifest=%s\n' "$AGY_MANIFEST_URL"
 }
 
 _agy_update_termux_apply() {

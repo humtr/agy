@@ -12,8 +12,11 @@ AGY_PATCHED="${AGY_PATCHED:-$AGY_RUNTIME_DIR/agy}"
 AGY_EXEC_WRAPPER="${AGY_EXEC_WRAPPER:-$AGY_RUNTIME_DIR/run}"
 AGY_USER_WRAPPER="${AGY_USER_WRAPPER:-$AGY_HOME/bin/agy}"
 AGY_STATE_DIR="${AGY_STATE_DIR:-$AGY_HOME/.local/share/agy/native}"
-AGY_STATE_FILE="${AGY_STATE_FILE:-$AGY_STATE_DIR/state.env}"
+AGY_STATE_FILE="${AGY_STATE_FILE:-$AGY_STATE_DIR/state.json}"
+AGY_LEGACY_STATE_FILE="${AGY_LEGACY_STATE_FILE:-$AGY_STATE_DIR/state.env}"
 AGY_DOCTOR_BASE="${AGY_DOCTOR_BASE:-$AGY_STATE_DIR/doctor}"
+AGY_LOCK_FILE="${AGY_LOCK_FILE:-$AGY_STATE_DIR/native.lock}"
+AGY_LOCK_WAIT_SECONDS="${AGY_LOCK_WAIT_SECONDS:-30}"
 if [ -z "${AGY_RUNTIME_BUILDER:-}" ]; then
     if [ -f "$AGY_LIB_DIR/build-runtime.py" ]; then
         AGY_RUNTIME_BUILDER="$AGY_LIB_DIR/build-runtime.py"
@@ -49,7 +52,7 @@ agy_sha256() {
     sha256sum "$1" 2>/dev/null | awk '{print $1}'
 }
 
-agy_load_state() {
+agy_state_defaults() {
     NEEDS_REPATCH=1
     PATCHED_FROM_ORIGINAL_SHA256=""
     PATCHED_SHA256=""
@@ -62,31 +65,143 @@ agy_load_state() {
     LAST_FAILED_UPDATE_STATUS=""
     LAST_FAILED_UPDATE_AT=""
     LAST_FAILED_UPDATE_CASE=""
+}
+
+agy_safe_state_kv() {
+    local key="$1" val="$2"
+    case "$key" in
+        PATCHED_FROM_ORIGINAL_SHA256|PATCHED_SHA256|LAST_RAW_SHA256|LAST_REPAIR_AT|LAST_SELF_UPDATE_AT|VERIFIED_VERSION|LAST_SEEN_UPSTREAM_VERSION|LAST_FAILED_UPDATE_VERSION|LAST_FAILED_UPDATE_STATUS|LAST_FAILED_UPDATE_AT|LAST_FAILED_UPDATE_CASE|NEEDS_REPATCH) ;;
+        *) return 1 ;;
+    esac
+    case "$val" in
+        *[\`\$\\\"\']* ) return 1 ;;
+    esac
+    return 0
+}
+
+agy_state_read_json() {
+    local path="$1"
+    python3 - "$path" <<'PY'
+import json,sys
+from pathlib import Path
+p=Path(sys.argv[1])
+if not p.exists():
+    raise SystemExit(0)
+d=json.loads(p.read_text())
+keys=[
+ "PATCHED_FROM_ORIGINAL_SHA256","PATCHED_SHA256","LAST_RAW_SHA256","LAST_REPAIR_AT",
+ "LAST_SELF_UPDATE_AT","VERIFIED_VERSION","LAST_SEEN_UPSTREAM_VERSION",
+ "LAST_FAILED_UPDATE_VERSION","LAST_FAILED_UPDATE_STATUS","LAST_FAILED_UPDATE_AT",
+ "LAST_FAILED_UPDATE_CASE","NEEDS_REPATCH"]
+for k in keys:
+    v=d.get(k,"")
+    if isinstance(v,bool):
+        v="1" if v else "0"
+    elif v is None:
+        v=""
+    else:
+        v=str(v)
+    print(f"{k}\t{v}")
+PY
+}
+
+agy_state_write_json() {
+    mkdir -p "$AGY_STATE_DIR"
+    python3 - "$AGY_STATE_FILE" <<'PY'
+import json,os,sys,tempfile
+path=sys.argv[1]
+dirp=os.path.dirname(path)
+state={
+ "PATCHED_FROM_ORIGINAL_SHA256":os.getenv("PATCHED_FROM_ORIGINAL_SHA256",""),
+ "PATCHED_SHA256":os.getenv("PATCHED_SHA256",""),
+ "LAST_RAW_SHA256":os.getenv("LAST_RAW_SHA256",""),
+ "NEEDS_REPATCH":os.getenv("NEEDS_REPATCH","1"),
+ "LAST_REPAIR_AT":os.getenv("LAST_REPAIR_AT",""),
+ "LAST_SELF_UPDATE_AT":os.getenv("LAST_SELF_UPDATE_AT",""),
+ "VERIFIED_VERSION":os.getenv("VERIFIED_VERSION",""),
+ "LAST_SEEN_UPSTREAM_VERSION":os.getenv("LAST_SEEN_UPSTREAM_VERSION",""),
+ "LAST_FAILED_UPDATE_VERSION":os.getenv("LAST_FAILED_UPDATE_VERSION",""),
+ "LAST_FAILED_UPDATE_STATUS":os.getenv("LAST_FAILED_UPDATE_STATUS",""),
+ "LAST_FAILED_UPDATE_AT":os.getenv("LAST_FAILED_UPDATE_AT",""),
+ "LAST_FAILED_UPDATE_CASE":os.getenv("LAST_FAILED_UPDATE_CASE",""),
+}
+fd,tmp=tempfile.mkstemp(prefix=".state.",suffix=".tmp",dir=dirp)
+try:
+    with os.fdopen(fd,"w",encoding="utf-8") as f:
+        json.dump(state,f,ensure_ascii=True,sort_keys=True)
+        f.write("\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(tmp,0o600)
+    os.replace(tmp,path)
+finally:
+    if os.path.exists(tmp):
+        os.unlink(tmp)
+PY
+}
+
+agy_state_migrate_legacy_env() {
+    [ -f "$AGY_LEGACY_STATE_FILE" ] || return 0
+    local line key val ok=0
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        case "$line" in \#*) continue ;; esac
+        case "$line" in *=*) ;; *) continue ;; esac
+        key="${line%%=*}"
+        val="${line#*=}"
+        if agy_safe_state_kv "$key" "$val"; then
+            case "$key" in
+                PATCHED_FROM_ORIGINAL_SHA256) PATCHED_FROM_ORIGINAL_SHA256="$val" ;;
+                PATCHED_SHA256) PATCHED_SHA256="$val" ;;
+                LAST_RAW_SHA256) LAST_RAW_SHA256="$val" ;;
+                NEEDS_REPATCH) NEEDS_REPATCH="$val" ;;
+                LAST_REPAIR_AT) LAST_REPAIR_AT="$val" ;;
+                LAST_SELF_UPDATE_AT) LAST_SELF_UPDATE_AT="$val" ;;
+                VERIFIED_VERSION) VERIFIED_VERSION="$val" ;;
+                LAST_SEEN_UPSTREAM_VERSION) LAST_SEEN_UPSTREAM_VERSION="$val" ;;
+                LAST_FAILED_UPDATE_VERSION) LAST_FAILED_UPDATE_VERSION="$val" ;;
+                LAST_FAILED_UPDATE_STATUS) LAST_FAILED_UPDATE_STATUS="$val" ;;
+                LAST_FAILED_UPDATE_AT) LAST_FAILED_UPDATE_AT="$val" ;;
+                LAST_FAILED_UPDATE_CASE) LAST_FAILED_UPDATE_CASE="$val" ;;
+            esac
+            ok=1
+        fi
+    done <"$AGY_LEGACY_STATE_FILE"
+    if [ "$ok" = "1" ] && [ ! -f "$AGY_STATE_FILE" ]; then
+        agy_state_write_json
+    fi
+}
+
+agy_load_state() {
+    local k v
+    agy_state_defaults
+    agy_state_migrate_legacy_env
     if [ -f "$AGY_STATE_FILE" ]; then
-        # shellcheck disable=SC1090
-        . "$AGY_STATE_FILE"
+        while IFS=$'\t' read -r k v; do
+            [ -n "$k" ] || continue
+            if ! agy_safe_state_kv "$k" "$v"; then
+                continue
+            fi
+            case "$k" in
+                PATCHED_FROM_ORIGINAL_SHA256) PATCHED_FROM_ORIGINAL_SHA256="$v" ;;
+                PATCHED_SHA256) PATCHED_SHA256="$v" ;;
+                LAST_RAW_SHA256) LAST_RAW_SHA256="$v" ;;
+                NEEDS_REPATCH) NEEDS_REPATCH="$v" ;;
+                LAST_REPAIR_AT) LAST_REPAIR_AT="$v" ;;
+                LAST_SELF_UPDATE_AT) LAST_SELF_UPDATE_AT="$v" ;;
+                VERIFIED_VERSION) VERIFIED_VERSION="$v" ;;
+                LAST_SEEN_UPSTREAM_VERSION) LAST_SEEN_UPSTREAM_VERSION="$v" ;;
+                LAST_FAILED_UPDATE_VERSION) LAST_FAILED_UPDATE_VERSION="$v" ;;
+                LAST_FAILED_UPDATE_STATUS) LAST_FAILED_UPDATE_STATUS="$v" ;;
+                LAST_FAILED_UPDATE_AT) LAST_FAILED_UPDATE_AT="$v" ;;
+                LAST_FAILED_UPDATE_CASE) LAST_FAILED_UPDATE_CASE="$v" ;;
+            esac
+        done < <(agy_state_read_json "$AGY_STATE_FILE")
     fi
 }
 
 agy_write_state() {
-    mkdir -p "$AGY_STATE_DIR"
-    local tmp="$AGY_STATE_FILE.tmp.$$"
-    {
-        printf 'PATCHED_FROM_ORIGINAL_SHA256=%s\n' "${PATCHED_FROM_ORIGINAL_SHA256:-}"
-        printf 'PATCHED_SHA256=%s\n' "${PATCHED_SHA256:-}"
-        printf 'LAST_RAW_SHA256=%s\n' "${LAST_RAW_SHA256:-}"
-        printf 'NEEDS_REPATCH=%s\n' "${NEEDS_REPATCH:-1}"
-        printf 'LAST_REPAIR_AT=%s\n' "${LAST_REPAIR_AT:-}"
-        printf 'LAST_SELF_UPDATE_AT=%s\n' "${LAST_SELF_UPDATE_AT:-}"
-        printf 'VERIFIED_VERSION=%s\n' "${VERIFIED_VERSION:-}"
-        printf 'LAST_SEEN_UPSTREAM_VERSION=%s\n' "${LAST_SEEN_UPSTREAM_VERSION:-}"
-        printf 'LAST_FAILED_UPDATE_VERSION=%s\n' "${LAST_FAILED_UPDATE_VERSION:-}"
-        printf 'LAST_FAILED_UPDATE_STATUS=%s\n' "${LAST_FAILED_UPDATE_STATUS:-}"
-        printf 'LAST_FAILED_UPDATE_AT=%s\n' "${LAST_FAILED_UPDATE_AT:-}"
-        printf 'LAST_FAILED_UPDATE_CASE=%s\n' "${LAST_FAILED_UPDATE_CASE:-}"
-    } >"$tmp"
-    chmod 600 "$tmp"
-    mv "$tmp" "$AGY_STATE_FILE"
+    agy_state_write_json
 }
 
 agy_native_resolver_ok() {
@@ -280,12 +395,22 @@ agy_with_lock() {
     mkdir -p "$AGY_STATE_DIR"
     if command -v flock >/dev/null 2>&1; then
         (
-            flock -x 9
+            if ! flock -w "$AGY_LOCK_WAIT_SECONDS" -x 9; then
+                printf 'agy: another mutation operation is in progress (lock: %s).\n' "$AGY_LOCK_FILE" >&2
+                return 99
+            fi
             "$@"
-        ) 9>"$AGY_STATE_DIR/repair.lock"
+        ) 9>"$AGY_LOCK_FILE"
     else
-        local lock="$AGY_STATE_DIR/repair.lock.d"
-        while ! mkdir "$lock" 2>/dev/null; do sleep 1; done
+        local lock="$AGY_LOCK_FILE.d" waited=0
+        while ! mkdir "$lock" 2>/dev/null; do
+            sleep 1
+            waited=$((waited + 1))
+            if [ "$waited" -ge "$AGY_LOCK_WAIT_SECONDS" ]; then
+                printf 'agy: another mutation operation is in progress (lock: %s).\n' "$lock" >&2
+                return 99
+            fi
+        done
         trap 'rmdir "$lock" 2>/dev/null || true' RETURN
         "$@"
     fi
@@ -664,7 +789,7 @@ agy_update_broker() {
     local mode="${1:-auto}" status fallback_url fallback_label
     local display_mode="${2:-$mode}"
 
-    if agy_update_broker_once "$AGY_MANIFEST_URL" "current" "$display_mode"; then
+    if agy_with_lock agy_update_broker_once "$AGY_MANIFEST_URL" "current" "$display_mode"; then
         return 0
     fi
     status=$?
@@ -691,7 +816,7 @@ agy_update_broker() {
     fallback_url=$(agy_versioned_manifest_url "$AGY_VERIFIED_FALLBACK_VERSION")
     fallback_label="verified fallback $AGY_VERIFIED_FALLBACK_VERSION"
     printf 'agy: current update failed; trying %s...\n' "$fallback_label" >&2
-    agy_update_broker_once "$fallback_url" "$fallback_label" "$display_mode"
+    agy_with_lock agy_update_broker_once "$fallback_url" "$fallback_label" "$display_mode"
 }
 
 agy_auto_update() {

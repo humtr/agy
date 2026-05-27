@@ -248,21 +248,21 @@ init_state() {
 action="${1:---status}"
 case "$action" in
     --install)
-        install_wrappers
-        migrate_legacy_raw
+        agy_with_lock install_wrappers
+        agy_with_lock migrate_legacy_raw
         agy_update_broker explicit
         ;;
     --status)
         agy_status
         ;;
     --repair)
-        install_wrappers
-        migrate_legacy_raw
+        agy_with_lock install_wrappers
+        agy_with_lock migrate_legacy_raw
         agy_repair setup
         ;;
     --install-wrappers)
-        install_wrappers
-        migrate_legacy_raw
+        agy_with_lock install_wrappers
+        agy_with_lock migrate_legacy_raw
         ;;
     --install-launcher)
         install_compiled_launcher
