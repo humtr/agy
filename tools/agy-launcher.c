@@ -113,6 +113,20 @@ static int exec_control(const char *control_path, int argc, char **argv, enum ro
     return -1;
 }
 
+static int exec_shell_fallback(const char *fallback_path, int argc, char **argv, const char *reason) {
+    char **outv;
+    int i;
+    outv = calloc((size_t)(argc + 1), sizeof(char *));
+    if (!outv) return -1;
+    outv[0] = (char *)fallback_path;
+    for (i = 1; i < argc; i++) outv[i] = argv[i];
+    outv[argc] = NULL;
+    fprintf(stderr, "agy-launcher: launcher path failed (%s), trying shell fallback: %s\n",
+            reason ? reason : "unknown", fallback_path);
+    execv(fallback_path, outv);
+    return -1;
+}
+
 int main(int argc, char **argv) {
     char default_resolver[PATH_MAX];
     char default_runtime[PATH_MAX];
@@ -120,6 +134,7 @@ int main(int argc, char **argv) {
     char default_shim[PATH_MAX];
     char default_glibc[PATH_MAX];
     char default_control[PATH_MAX];
+    char default_shell_fallback[PATH_MAX];
     char default_cert_file[PATH_MAX];
     char default_cert_dir[PATH_MAX];
     char lib_path[PATH_MAX * 2];
@@ -133,6 +148,7 @@ int main(int argc, char **argv) {
     const char *control_path;
     const char *cert_file;
     const char *cert_dir;
+    const char *shell_fallback;
     struct route route;
     int sub_idx = -1;
     char **exec_argv;
@@ -148,6 +164,7 @@ int main(int argc, char **argv) {
     if (safe_join(default_control, sizeof(default_control), home, "bin/agy-termux") < 0) return 125;
     if (safe_join(default_cert_file, sizeof(default_cert_file), prefix, "etc/tls/cert.pem") < 0) return 125;
     if (safe_join(default_cert_dir, sizeof(default_cert_dir), prefix, "etc/tls/certs") < 0) return 125;
+    if (safe_join(default_shell_fallback, sizeof(default_shell_fallback), home, ".local/lib/agy-termux/agy-shell-wrapper.sh") < 0) return 125;
 
     resolver_path = env_or("AGY_RESOLV_CONF", default_resolver);
     runtime_path = env_or("AGY_RUNTIME", default_runtime);
@@ -157,6 +174,7 @@ int main(int argc, char **argv) {
     control_path = env_or("AGY_TERMUX_CONTROL", default_control);
     cert_file = env_or("AGY_CERT_FILE", default_cert_file);
     cert_dir = env_or("AGY_CERT_DIR", default_cert_dir);
+    shell_fallback = env_or("AGY_SHELL_FALLBACK", default_shell_fallback);
 
     route = decide_route(argc, argv, &sub_idx);
     debug_log("route decision=%d reason=%s", route.action, route.reason ? route.reason : "none");
@@ -171,14 +189,18 @@ int main(int argc, char **argv) {
     if (route.action == ROUTE_UPDATE || route.action == ROUTE_CONTROL_ALIAS) {
         debug_log("control path=%s", control_path);
         if (exec_control(control_path, argc, argv, route.action, sub_idx) < 0) {
-            fprintf(stderr, "agy-launcher: failed to dispatch control command via %s: %s\n", control_path, strerror(errno));
-            return 126;
+            if (exec_shell_fallback(shell_fallback, argc, argv, "control dispatch failed") < 0) {
+                fprintf(stderr, "agy-launcher: failed to dispatch control command via %s: %s\n", control_path, strerror(errno));
+                return 126;
+            }
         }
     }
 
     if (open_resolver_fd33(resolver_path) < 0) {
-        fprintf(stderr, "agy-launcher: failed to open resolver path %s on fd 33: %s\n", resolver_path, strerror(errno));
-        return 66;
+        if (exec_shell_fallback(shell_fallback, argc, argv, "fd33 resolver open failed") < 0) {
+            fprintf(stderr, "agy-launcher: failed to open resolver path %s on fd 33: %s\n", resolver_path, strerror(errno));
+            return 66;
+        }
     }
     debug_log("resolver path=%s fd33=open", resolver_path);
 
@@ -208,6 +230,9 @@ int main(int argc, char **argv) {
     exec_argv[argc + 3] = NULL;
 
     execv(loader_path, exec_argv);
-    fprintf(stderr, "agy-launcher: failed to exec loader %s with runtime %s: %s\n", loader_path, runtime_path, strerror(errno));
+    if (exec_shell_fallback(shell_fallback, argc, argv, "loader exec failed") < 0) {
+        fprintf(stderr, "agy-launcher: failed to exec loader %s with runtime %s: %s\n", loader_path, runtime_path, strerror(errno));
+        return 127;
+    }
     return 127;
 }

@@ -68,4 +68,6 @@ Termux pipeline is responsible for update lifecycle:
 
 - proot is diagnostic fallback only (`agy-termux test-proot`).
 - shell fallback is recovery path when compiled launcher is unavailable.
+- launcher also auto-retries shell fallback if control dispatch, fd33 open, or
+  loader exec fails.
 - token/auth/cache files are not uninstall/cleanup targets.
