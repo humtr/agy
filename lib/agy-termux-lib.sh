@@ -95,6 +95,17 @@ agy_native_resolver_ok() {
     )
 }
 
+agy_runtime_resolver_counts() {
+    local target="${1:-$AGY_PATCHED}"
+    [ -r "$target" ] || { printf 'missing missing\n'; return 1; }
+    python3 - "$target" <<'PY'
+from pathlib import Path
+import sys
+b = Path(sys.argv[1]).read_bytes()
+print(b.count(b"/etc/resolv.conf"), b.count(b"/proc/self/fd/33"))
+PY
+}
+
 agy_runtime_command() {
     local cert_dir_env=()
     local runtime_env=()
@@ -638,6 +649,7 @@ agy_mark_raw_changed() {
 
 agy_status() {
     agy_load_state
+    local resolver_counts etc_count fd33_count
     printf 'command -v agy: %s\n' "$(command -v agy 2>/dev/null || true)"
     printf 'type -a agy:\n'
     bash -lc 'type -a agy' 2>/dev/null || true
@@ -659,10 +671,14 @@ agy_status() {
     printf 'glibc loader: %s (%s)\n' "$AGY_LOADER" "$([ -x "$AGY_LOADER" ] && echo ok || echo missing)"
     printf 'SSL_CERT_FILE: %s (%s)\n' "$AGY_CERT_FILE" "$([ -f "$AGY_CERT_FILE" ] && echo ok || echo missing)"
     printf 'SSL_CERT_DIR: %s (%s)\n' "$AGY_CERT_DIR" "$([ -d "$AGY_CERT_DIR" ] && echo ok || echo missing)"
-    printf 'resolver mode: native-fd33 (strict)\n'
-    printf 'resolver selected: native\n'
-    printf 'resolver native fd: /proc/self/fd/%s (%s)\n' "$AGY_RESOLVER_FD" "$(agy_native_resolver_ok && echo ok || echo failed)"
-    printf 'resolv.conf source: %s (%s)\n' "$AGY_RESOLV_CONF" "$([ -f "$AGY_RESOLV_CONF" ] && echo ok || echo missing)"
+    resolver_counts="$(agy_runtime_resolver_counts "$AGY_PATCHED" 2>/dev/null || printf 'missing missing')"
+    etc_count="$(printf '%s' "$resolver_counts" | awk '{print $1}')"
+    fd33_count="$(printf '%s' "$resolver_counts" | awk '{print $2}')"
+    printf 'resolver path: /proc/self/fd/%s\n' "$AGY_RESOLVER_FD"
+    printf 'resolver fd: %s (%s)\n' "$AGY_RESOLVER_FD" "$(agy_native_resolver_ok && echo ready || echo unavailable)"
+    printf 'resolver source: %s (%s)\n' "$AGY_RESOLV_CONF" "$([ -r "$AGY_RESOLV_CONF" ] && echo readable || echo unreadable)"
+    printf 'runtime resolver rewrite /etc/resolv.conf count: %s\n' "$etc_count"
+    printf 'runtime resolver rewrite /proc/self/fd/33 count: %s\n' "$fd33_count"
     printf 'glibc hosts: %s\n' "$AGY_PREFIX/glibc/etc/hosts $([ -f "$AGY_PREFIX/glibc/etc/hosts" ] && echo present || echo missing)"
     printf 'glibc nsswitch: %s\n' "$AGY_PREFIX/glibc/etc/nsswitch.conf $([ -f "$AGY_PREFIX/glibc/etc/nsswitch.conf" ] && echo present || echo missing)"
     printf 'tcmalloc shim policy: removed from runtime and active source\n'
@@ -776,7 +792,7 @@ agy_main() {
         case_dir=$(agy_make_case "$exit_code" "$temp_raw")
         printf 'agy failed with status %s.\n' "$exit_code" >&2
         printf 'Termux diagnostic case created:\n  %s\n' "$case_dir" >&2
-        printf 'Next:\n  agy termux\n' >&2
+        printf 'Next:\n  agy-termux doctor\n' >&2
     fi
     rm -f "$temp_raw"
     return "$exit_code"

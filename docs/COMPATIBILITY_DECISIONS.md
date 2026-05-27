@@ -60,10 +60,33 @@ Evidence:
 
 Policy:
 
-- Use strict native fd-backed resolver path only.
-- Do not expose runtime resolver mode switches.
+- Use strict native fd-backed resolver path only for `agy`.
+- Keep proot resolver bind for diagnostic-only fallback via control plane tests.
 
-## Decision 4: `tcmalloc_fix.so` mmap Shim
+## Decision 4: Mediated Launcher Routing
+
+Status: required.
+
+Evidence:
+
+- Upstream self-update can replace runtime artifacts outside Termux migration
+  guarantees.
+- Termux compatibility requires raw->patched candidate validation, resolver
+  rewrite verification, and atomic replacement.
+- Compiled launcher routing can reserve lifecycle commands while preserving
+  passthrough for ordinary upstream commands.
+
+Policy:
+
+- `agy` is a mediated compiled launcher, not pure passthrough.
+- Intercept only `update`, `upgrade`, `self-update` and route to
+  `agy-termux update`.
+- Keep unknown subcommands as upstream passthrough.
+- Keep `--version`, `--help`, `-h`, and `--print` as passthrough.
+- Do not hard-intercept management words by default; optionally alias with
+  `AGY_ENABLE_TERMUX_ALIAS=1`.
+
+## Decision 5: `tcmalloc_fix.so` mmap Shim
 
 Status: removed from runtime and active source.
 

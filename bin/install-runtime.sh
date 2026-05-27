@@ -7,7 +7,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
     cat <<'EOF'
-Usage: bash bin/install-runtime.sh [--install|--status|--repair|--install-wrappers|--init-state]
+Usage: bash bin/install-runtime.sh [--install|--status|--repair|--install-wrappers|--install-launcher|--install-shell-wrapper|--init-state]
 
 Default action: --status
 
@@ -15,7 +15,9 @@ Actions:
   --install          Install wrappers, download/update raw agy, and build the runtime copy.
   --status           Print current wrapper/runtime status.
   --repair           Transactionally rebuild ~/.local/lib/agy-termux/agy from raw agy.
-  --install-wrappers Install ~/bin/agy and ~/.local/lib/agy-termux/run wrappers.
+  --install-wrappers Install compiled launcher + agy-termux control plane (and shell fallback).
+  --install-launcher Build/install compiled launcher at ~/bin/agy.
+  --install-shell-wrapper Install shell fallback wrapper.
   --init-state       Initialize state.env after validating the current runtime copy.
 
 This script never modifies the raw official agy binary in place and never runs
@@ -23,32 +25,94 @@ agy auth login.
 EOF
 }
 
-install_wrappers() {
-    mkdir -p "$(dirname "$AGY_USER_WRAPPER")" "$AGY_RUNTIME_DIR" "$AGY_STATE_DIR"
+agy_launcher_available() {
+    command -v clang >/dev/null 2>&1
+}
 
-    install -m 755 "$ROOT_DIR/lib/agy-termux-lib.sh" "$AGY_RUNTIME_DIR/lib.sh"
-    install -m 755 "$ROOT_DIR/tools/build-runtime.py" "$AGY_RUNTIME_DIR/build-runtime.py"
-    install -m 644 "$ROOT_DIR/config/verified-agy-version.env" "$AGY_RUNTIME_DIR/verified-agy-version.env"
+agy_build_launcher() {
+    local out="$1"
+    clang -O2 -Wall -Wextra -o "$out" "$ROOT_DIR/tools/agy-launcher.c"
+}
 
-    cat >"$AGY_USER_WRAPPER" <<EOF
+install_control_plane() {
+    local control_runtime="$AGY_RUNTIME_DIR/agy-termux-control.sh"
+    mkdir -p "$AGY_RUNTIME_DIR" "$(dirname "$AGY_HOME/bin/agy-termux")"
+    cp "$ROOT_DIR/tools/agy-termux-control.sh" "$control_runtime"
+    chmod 755 "$control_runtime"
+    cat >"$AGY_HOME/bin/agy-termux" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
+exec "$control_runtime" "\$@"
+EOF
+    chmod 755 "$AGY_HOME/bin/agy-termux"
+}
+
+install_shell_fallback() {
+    mkdir -p "$AGY_RUNTIME_DIR"
+cat >"$AGY_RUNTIME_DIR/agy-shell-wrapper.sh" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+unset LD_PRELOAD LD_LIBRARY_PATH
 LIB="$AGY_RUNTIME_DIR/lib.sh"
 # shellcheck disable=SC1091
 . "\$LIB"
 agy_main "\$@"
 EOF
+    chmod 755 "$AGY_RUNTIME_DIR/agy-shell-wrapper.sh"
+}
 
-    cat >"$AGY_EXEC_WRAPPER" <<EOF
+install_compiled_launcher() {
+    local tmp launcher_bin backup
+    launcher_bin="$AGY_USER_WRAPPER"
+    mkdir -p "$(dirname "$launcher_bin")"
+    tmp="$AGY_STATE_DIR/agy-launcher.$$"
+    mkdir -p "$AGY_STATE_DIR"
+    agy_build_launcher "$tmp"
+    chmod 755 "$tmp"
+    if [ -e "$launcher_bin" ]; then
+        backup="$AGY_STATE_DIR/agy.launcher.$(date +%Y%m%d-%H%M%S).bak"
+        cp -p "$launcher_bin" "$backup"
+        echo "Backed up launcher:"
+        echo "  $backup"
+    fi
+    mv "$tmp" "$launcher_bin"
+    chmod 755 "$launcher_bin"
+}
+
+install_wrappers() {
+    mkdir -p "$(dirname "$AGY_USER_WRAPPER")" "$AGY_RUNTIME_DIR" "$AGY_STATE_DIR"
+
+    cp "$ROOT_DIR/lib/agy-termux-lib.sh" "$AGY_RUNTIME_DIR/lib.sh"
+    chmod 755 "$AGY_RUNTIME_DIR/lib.sh"
+    cp "$ROOT_DIR/tools/build-runtime.py" "$AGY_RUNTIME_DIR/build-runtime.py"
+    chmod 755 "$AGY_RUNTIME_DIR/build-runtime.py"
+    cp "$ROOT_DIR/config/verified-agy-version.env" "$AGY_RUNTIME_DIR/verified-agy-version.env"
+    chmod 644 "$AGY_RUNTIME_DIR/verified-agy-version.env"
+
+cat >"$AGY_EXEC_WRAPPER" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
+unset LD_PRELOAD LD_LIBRARY_PATH
 LIB="$AGY_RUNTIME_DIR/lib.sh"
 # shellcheck disable=SC1091
 . "\$LIB"
 agy_run_patched "\$@"
 EOF
 
-    chmod 755 "$AGY_USER_WRAPPER" "$AGY_EXEC_WRAPPER"
+    chmod 755 "$AGY_EXEC_WRAPPER"
+    if agy_launcher_available; then
+        install_compiled_launcher
+        echo "Installed launcher:"
+        echo "  $AGY_USER_WRAPPER"
+    else
+        install_shell_fallback
+        cp "$AGY_RUNTIME_DIR/agy-shell-wrapper.sh" "$AGY_USER_WRAPPER"
+        chmod 755 "$AGY_USER_WRAPPER"
+        echo "clang unavailable, installed shell fallback launcher:"
+        echo "  $AGY_USER_WRAPPER"
+    fi
+    install_control_plane
+    install_shell_fallback
     ensure_user_path
     install_prefix_wrapper
 
@@ -63,7 +127,11 @@ EOF
     [ -f "$AGY_PREFIX/glibc/etc/nsswitch.conf" ] || printf 'hosts: files dns\n' >"$AGY_PREFIX/glibc/etc/nsswitch.conf"
     [ -f "$AGY_PREFIX/glibc/etc/hosts" ] || printf '127.0.0.1 localhost\n' >"$AGY_PREFIX/glibc/etc/hosts"
 
-    echo "Installed wrappers:"
+    echo "Installed control command:"
+    echo "  $AGY_HOME/bin/agy-termux"
+    echo "Installed shell fallback:"
+    echo "  $AGY_RUNTIME_DIR/agy-shell-wrapper.sh"
+    echo "Installed PATH command:"
     echo "  $AGY_USER_WRAPPER"
     echo "  $AGY_PREFIX/bin/agy"
     echo "  $AGY_EXEC_WRAPPER"
@@ -73,6 +141,7 @@ EOF
     echo "  $AGY_RUNTIME_DIR/verified-agy-version.env"
     echo "Ensured startup PATH includes:"
     echo "  $HOME/bin"
+    echo "Note: refresh shell command cache with 'hash -r' (bash) or 'rehash' (zsh)."
 }
 
 install_prefix_wrapper() {
@@ -145,6 +214,14 @@ case "$action" in
         ;;
     --install-wrappers)
         install_wrappers
+        ;;
+    --install-launcher)
+        install_compiled_launcher
+        ;;
+    --install-shell-wrapper)
+        install_shell_fallback
+        cp "$AGY_RUNTIME_DIR/agy-shell-wrapper.sh" "$AGY_USER_WRAPPER"
+        chmod 755 "$AGY_USER_WRAPPER"
         ;;
     --init-state)
         init_state

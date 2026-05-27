@@ -1,6 +1,6 @@
-# Antigravity CLI (`agy`) Native Termux Guide
+# Antigravity CLI (`agy`) Compiled Launcher Guide
 
-This project is a Termux-specific native wrapper and runtime-build workflow for
+This project is a Termux-specific launcher and runtime-build workflow for
 running the official Linux ARM64 Antigravity CLI (`agy`) on Android/Termux.
 
 The current environment already completed `agy auth login`. Do not rerun auth
@@ -17,18 +17,17 @@ The maintained layout is:
 ~/.local/lib/agy-termux/agy
   Patched runtime copy generated from the raw binary.
 
-~/.local/lib/agy-termux/run
-  Thin glibc/env execution wrapper for the patched runtime.
+~/bin/agy
+  Compiled launcher (Termux/Bionic executable). This is the public runtime
+  entrypoint and mediates command routing.
+
+~/bin/agy-termux
+  Independent control plane command for status/doctor/update/repair/rollback.
 
 ~/.local/lib/agy-termux/lib.sh
 ~/.local/lib/agy-termux/build-runtime.py
-  Installed runtime support files used by preflight, update, repair, and
-  diagnostics. Normal `agy` execution does not source files from the cloned
-  project directory.
-
-~/bin/agy
-  User-facing wrapper. Every normal invocation goes through preflight,
-  execution, diagnostic capture, and postflight raw-change detection.
+~/.local/lib/agy-termux/agy-termux-control.sh
+  Installed support files used by control-plane operations.
 
 ~/.local/share/agy-termux/state.env
   Hash/state file recording which raw binary produced the runtime copy.
@@ -43,17 +42,13 @@ The normal command is:
 agy ...
 ```
 
-The only management command is:
+The management command is:
 
 ```bash
-agy termux
+agy-termux ...
 ```
 
-If you need to pass the literal argument `termux` to the underlying CLI:
-
-```bash
-AGY_PASSTHROUGH_TERMUX=1 agy termux
-```
+`agy-termux` is the primary control-plane command.
 
 ## Reliability Model
 
@@ -114,9 +109,8 @@ Antigravity auto-update was confirmed from local binary inspection. This wrapper
 therefore uses update-before-run, verified tarball replacement, detection, and
 repair rather than unsafe `execve` hooks.
 
-Resolver handling is strict native fd mode. The wrapper opens Termux's
-`$PREFIX/etc/resolv.conf` on fd 33 for the agy runtime and does not provide a
-runtime resolver mode switch.
+Resolver handling is strict native fd mode. The compiled launcher opens
+`$PREFIX/etc/resolv.conf` on fd 33 for the patched runtime.
 
 The runtime uses `GODEBUG=netdns=go`, Termux CA certificates, and invokes the
 glibc loader with `--library-path` instead of exporting `LD_LIBRARY_PATH`.
@@ -124,10 +118,14 @@ This keeps child Bionic tools from inheriting glibc paths while still giving the
 agy runtime the libraries it needs.
 
 The runtime builder rewrites the agy binary's `/etc/resolv.conf` references to
-`/proc/self/fd/33`. The wrapper then opens fd 33 from
+`/proc/self/fd/33`. The launcher then opens fd 33 from
 `$PREFIX/etc/resolv.conf` before executing agy. This avoids the Android
 `/etc -> /system/etc` resolver gap without bind mounts, global
 `LD_LIBRARY_PATH`, or shared-storage resolver files.
+
+Never export `LD_LIBRARY_PATH` or `LD_PRELOAD` in shell profile files for this
+workflow. Launcher/runtime paths are isolated per child execution by unsetting
+`LD_*` and using loader `--library-path` only.
 
 To verify the canonical resolver path without changing auth state:
 
@@ -145,6 +143,11 @@ The user must complete the browser/OAuth flow. Do not paste OAuth callback URLs,
 codes, states, cookies, or tokens into diagnostics. After login completes, verify
 a harmless prompt.
 
+`you are not signed in -> signing in... -> interior entry` is not a failure
+signal by itself. Treat auth failure only when fresh browser OAuth is required,
+sign-in stalls indefinitely, explicit auth failure appears, requests time out,
+or runtime/model calls fail.
+
 ## Diagnostic Cases
 
 Normal `agy` failures create a diagnostic case unless the exit code is `0` or
@@ -160,8 +163,8 @@ Case layout:
   repair_prompt.txt
 ```
 
-The wrapper does not auto-call Gemini or Codex. Use `agy termux` and choose the
-menu action if you want to send the last redacted prompt. If redaction looks
+The wrapper does not auto-call Gemini or Codex. Use `agy-termux doctor` to
+inspect runtime state first. If redaction looks
 uncertain, inspect the prompt path manually and do not send it.
 
 Redaction is best-effort. It targets bearer headers, cookies, OAuth token/query
@@ -174,6 +177,16 @@ See `docs/COMPATIBILITY_DECISIONS.md` for the maintained compatibility record.
 The required runtime decisions are the static VA39 patch, the `faccessat2`
 compatibility patch, strict native fd33 resolver path, and loader-scoped
 glibc library paths.
+
+`agy` is a mediated launcher. Lifecycle commands like `update`, `upgrade`, and
+`self-update` are intercepted and routed to the Termux pipeline instead of the
+upstream runtime self-update path.
+
+Other subcommands default to upstream passthrough. Unknown subcommands are not
+blocked by launcher allowlists.
+
+Direct execution of `~/.local/lib/agy-termux/agy` is unsupported. The patched
+runtime expects fd 33 resolver wiring from the launcher.
 
 `tcmalloc_fix.so` is not part of the active runtime or active source tree. The
 wrapper does not set `LD_PRELOAD` for it. If future crash evidence justifies
