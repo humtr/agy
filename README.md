@@ -18,10 +18,10 @@ Termux/Android에서 Linux(glibc)용 `agy`를 안정적으로 실행하기 위�
 
 ## 빠른 설치
 
-공식 원라인(installer 브랜치 부트스트랩):
+공식 원라인(main 브랜치 부트스트랩):
 
 ```bash
-pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/humtr/agy/installer/install.sh | bash
+pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/humtr/agy/main/install.sh | bash
 ```
 
 레포 기반(main 체크아웃 후 동일 installer 엔진 실행):
