@@ -47,7 +47,8 @@ static void debug_log(const char *fmt, ...) {
 enum route_action {
     ROUTE_UPSTREAM = 0,
     ROUTE_UPDATE,
-    ROUTE_CONTROL_ALIAS
+    ROUTE_CONTROL_ALIAS,
+    ROUTE_MANAGED_SHELL
 };
 
 struct route {
@@ -60,19 +61,24 @@ static int is_lifecycle(const char *s) {
     return streq(s, "update") || streq(s, "upgrade") || streq(s, "self-update");
 }
 
-static int is_management_word(const char *s) {
-    return streq(s, "repair") || streq(s, "rollback") || streq(s, "fallback") ||
-           streq(s, "install") || streq(s, "uninstall") || streq(s, "doctor") ||
-           streq(s, "status");
+static const char *route_name(enum route_action action) {
+    switch (action) {
+        case ROUTE_UPSTREAM: return "upstream";
+        case ROUTE_UPDATE: return "lifecycle";
+        case ROUTE_CONTROL_ALIAS: return "control-alias";
+        case ROUTE_MANAGED_SHELL: return "managed";
+    }
+    return "unknown";
 }
 
 static struct route decide_route(int argc, char **argv, int *sub_idx) {
     *sub_idx = -1;
-    if (argc < 2) return (struct route){ROUTE_UPSTREAM, NULL, "no subcommand"};
+    if (argc < 2) return (struct route){ROUTE_MANAGED_SHELL, NULL, "bare interactive entrypoint"};
     if (streq(argv[1], "--")) return (struct route){ROUTE_UPSTREAM, NULL, "explicit -- passthrough"};
     if (argv[1][0] == '-') return (struct route){ROUTE_UPSTREAM, NULL, "leading option passthrough"};
     *sub_idx = 1;
     if (is_lifecycle(argv[1])) return (struct route){ROUTE_UPDATE, "update", "reserved lifecycle command"};
+    if (streq(argv[1], "install")) return (struct route){ROUTE_MANAGED_SHELL, NULL, "termux-safe install route"};
     return (struct route){ROUTE_UPSTREAM, NULL, "default passthrough"};
 }
 
@@ -117,17 +123,18 @@ static int exec_control(const char *control_path, int argc, char **argv, enum ro
     return -1;
 }
 
-static int exec_shell_fallback(const char *fallback_path, int argc, char **argv, const char *reason) {
+static int exec_managed_shell(const char *bash_path, const char *managed_path, int argc, char **argv, const char *mode) {
     char **outv;
     int i;
-    outv = calloc((size_t)(argc + 1), sizeof(char *));
+    outv = calloc((size_t)(argc + 2), sizeof(char *));
     if (!outv) return -1;
-    outv[0] = (char *)fallback_path;
-    for (i = 1; i < argc; i++) outv[i] = argv[i];
-    outv[argc] = NULL;
-    fprintf(stderr, "agy-launcher: launcher path failed (%s), trying shell fallback: %s\n",
-            reason ? reason : "unknown", fallback_path);
-    execv(fallback_path, outv);
+    outv[0] = (char *)bash_path;
+    outv[1] = (char *)managed_path;
+    for (i = 1; i < argc; i++) outv[i + 1] = argv[i];
+    outv[argc + 1] = NULL;
+    if (mode && *mode) setenv("AGY_MANAGED_MODE", mode, 1);
+    debug_log("managed path=%s", managed_path);
+    execv(bash_path, outv);
     return -1;
 }
 
@@ -139,6 +146,7 @@ int main(int argc, char **argv) {
     char default_glibc[PATH_MAX];
     char default_control[PATH_MAX];
     char default_shell_fallback[PATH_MAX];
+    char default_bash[PATH_MAX];
     char default_cert_file[PATH_MAX];
     char default_cert_dir[PATH_MAX];
     char lib_path[PATH_MAX * 2];
@@ -153,6 +161,7 @@ int main(int argc, char **argv) {
     const char *cert_file;
     const char *cert_dir;
     const char *shell_fallback;
+    const char *bash_path;
     struct route route;
     int sub_idx = -1;
     char **exec_argv;
@@ -161,14 +170,15 @@ int main(int argc, char **argv) {
     if (!home || !*home) home = "/data/data/com.termux/files/home";
     if (!prefix || !*prefix) prefix = "/data/data/com.termux/files/usr";
     if (safe_join(default_resolver, sizeof(default_resolver), prefix, "etc/resolv.conf") < 0) return 125;
-    if (safe_join(default_runtime, sizeof(default_runtime), home, ".local/lib/agy-termux/agy") < 0) return 125;
+    if (safe_join(default_runtime, sizeof(default_runtime), home, ".local/lib/agy/native/runtime/agy") < 0) return 125;
     if (safe_join(default_loader, sizeof(default_loader), prefix, "glibc/lib/ld-linux-aarch64.so.1") < 0) return 125;
     if (safe_join(default_shim, sizeof(default_shim), home, ".local/glibc-shim") < 0) return 125;
     if (safe_join(default_glibc, sizeof(default_glibc), prefix, "glibc/lib") < 0) return 125;
-    if (safe_join(default_control, sizeof(default_control), home, "bin/agy-termux") < 0) return 125;
+    if (safe_join(default_control, sizeof(default_control), home, ".local/bin/agy-t") < 0) return 125;
     if (safe_join(default_cert_file, sizeof(default_cert_file), prefix, "etc/tls/cert.pem") < 0) return 125;
     if (safe_join(default_cert_dir, sizeof(default_cert_dir), prefix, "etc/tls/certs") < 0) return 125;
-    if (safe_join(default_shell_fallback, sizeof(default_shell_fallback), home, ".local/lib/agy-termux/agy-shell-wrapper.sh") < 0) return 125;
+    if (safe_join(default_shell_fallback, sizeof(default_shell_fallback), home, ".local/lib/agy/native/runtime/agy-shell-wrapper.sh") < 0) return 125;
+    if (safe_join(default_bash, sizeof(default_bash), prefix, "bin/bash") < 0) return 125;
 
     resolver_path = env_or("AGY_RESOLV_CONF", default_resolver);
     runtime_path = env_or("AGY_RUNTIME", default_runtime);
@@ -179,34 +189,31 @@ int main(int argc, char **argv) {
     cert_file = env_or("AGY_CERT_FILE", default_cert_file);
     cert_dir = env_or("AGY_CERT_DIR", default_cert_dir);
     shell_fallback = env_or("AGY_SHELL_FALLBACK", default_shell_fallback);
+    bash_path = env_or("AGY_BASH", default_bash);
 
     route = decide_route(argc, argv, &sub_idx);
-    debug_log("route decision=%d reason=%s", route.action, route.reason ? route.reason : "none");
-    if (route.action == ROUTE_UPSTREAM && sub_idx == 1 && is_management_word(argv[1])) {
-        if (is_true(getenv("AGY_ENABLE_TERMUX_ALIAS"))) {
-            route.action = ROUTE_CONTROL_ALIAS;
-            debug_log("management alias redirect enabled for %s", argv[1]);
-        } else {
-            if (streq(argv[1], "install")) {
-                fprintf(stderr, "agy-launcher: '%s' is a managed install command. Use 'agy-termux install-launcher'.\n", argv[1]);
-            } else {
-                fprintf(stderr, "agy-launcher: '%s' is a Termux control-plane command. Use 'agy-termux %s'.\n", argv[1], argv[1]);
-            }
+    debug_log("route decision=%s reason=%s", route_name(route.action), route.reason ? route.reason : "none");
+    if (route.action == ROUTE_MANAGED_SHELL) {
+        const char *mode = (argc < 2) ? "bare" : (streq(argv[1], "install") ? "install" : "managed");
+        if (exec_managed_shell(bash_path, shell_fallback, argc, argv, mode) < 0) {
+            fprintf(stderr, "agy-launcher: failed to exec managed shell path %s: %s\n", shell_fallback, strerror(errno));
+            return 126;
         }
     }
+
     if (route.action == ROUTE_UPDATE || route.action == ROUTE_CONTROL_ALIAS) {
         debug_log("control path=%s", control_path);
         if (exec_control(control_path, argc, argv, route.action, sub_idx) < 0) {
-            if (exec_shell_fallback(shell_fallback, argc, argv, "control dispatch failed") < 0) {
-                fprintf(stderr, "agy-launcher: failed to dispatch control command via %s: %s\n", control_path, strerror(errno));
+            if (exec_managed_shell(bash_path, shell_fallback, argc, argv, "recovery-control") < 0) {
+                fprintf(stderr, "agy-launcher: fallback failed after control dispatch error via %s: %s\n", control_path, strerror(errno));
                 return 126;
             }
         }
     }
 
     if (open_resolver_fd33(resolver_path) < 0) {
-        if (exec_shell_fallback(shell_fallback, argc, argv, "fd33 resolver open failed") < 0) {
-            fprintf(stderr, "agy-launcher: failed to open resolver path %s on fd 33: %s\n", resolver_path, strerror(errno));
+        if (exec_managed_shell(bash_path, shell_fallback, argc, argv, "recovery-resolver") < 0) {
+            fprintf(stderr, "agy-launcher: fallback failed after resolver open error %s: %s\n", resolver_path, strerror(errno));
             return 66;
         }
     }
@@ -238,8 +245,8 @@ int main(int argc, char **argv) {
     exec_argv[argc + 3] = NULL;
 
     execv(loader_path, exec_argv);
-    if (exec_shell_fallback(shell_fallback, argc, argv, "loader exec failed") < 0) {
-        fprintf(stderr, "agy-launcher: failed to exec loader %s with runtime %s: %s\n", loader_path, runtime_path, strerror(errno));
+    if (exec_managed_shell(bash_path, shell_fallback, argc, argv, "recovery-loader") < 0) {
+        fprintf(stderr, "agy-launcher: fallback failed after loader exec error %s with runtime %s: %s\n", loader_path, runtime_path, strerror(errno));
         return 127;
     }
     return 127;

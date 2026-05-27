@@ -3,12 +3,13 @@ set -euo pipefail
 
 AGY_HOME="${HOME:-/data/data/com.termux/files/home}"
 AGY_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
-AGY_RUNTIME_LIB="${AGY_RUNTIME_LIB:-$AGY_HOME/.local/lib/agy-termux/lib.sh}"
-AGY_RUNTIME_DIR="${AGY_RUNTIME_DIR:-$AGY_HOME/.local/lib/agy-termux}"
-AGY_STATE_DIR="${AGY_STATE_DIR:-$AGY_HOME/.local/share/agy-termux}"
+AGY_RUNTIME_LIB="${AGY_RUNTIME_LIB:-$AGY_HOME/.local/lib/agy/native/runtime/lib.sh}"
+AGY_NATIVE_ROOT="${AGY_NATIVE_ROOT:-$AGY_HOME/.local/lib/agy/native}"
+AGY_RUNTIME_DIR="${AGY_RUNTIME_DIR:-$AGY_NATIVE_ROOT/runtime}"
+AGY_STATE_DIR="${AGY_STATE_DIR:-$AGY_HOME/.local/share/agy/native}"
 AGY_STATE_FILE="${AGY_STATE_FILE:-$AGY_STATE_DIR/state.env}"
 AGY_PATCHED="${AGY_PATCHED:-$AGY_RUNTIME_DIR/agy}"
-AGY_RAW="${AGY_RAW:-$AGY_HOME/.local/bin/agy}"
+AGY_RAW="${AGY_RAW:-$AGY_NATIVE_ROOT/raw/agy}"
 AGY_LOADER="${AGY_LOADER:-$AGY_PREFIX/glibc/lib/ld-linux-aarch64.so.1}"
 AGY_RESOLV_CONF="${AGY_RESOLV_CONF:-$AGY_PREFIX/etc/resolv.conf}"
 AGY_SHIM_DIR="${AGY_SHIM_DIR:-$AGY_HOME/.local/glibc-shim}"
@@ -38,7 +39,11 @@ Commands:
   install-shell-wrapper  Install shell fallback wrapper
   test-native            Native fd33 resolver smoke test
   test-proot             Diagnostic-only proot resolver smoke test
+  install                Termux-safe install/launcher refresh
   version                Print control plane version
+  paths                  Print canonical path layout
+  route -- <args...>     Route args through agy runtime command path
+  debug bundle           Print latest diagnostic artifacts
   uninstall [--yes]      Remove generated runtime/launcher artifacts (dry-run default)
 EOF
 }
@@ -189,16 +194,60 @@ agy_uninstall() {
     printf 'uninstall completed (auth/token/cache untouched)\n'
 }
 
+agy_install_safe() {
+    if [ -x "$AGY_USER_LAUNCHER" ] && [ -x "$AGY_CONTROL_BIN" ] && [ -x "$AGY_PATCHED" ]; then
+        printf 'install: already initialized (idempotent)\n'
+        printf 'launcher=%s\n' "$AGY_USER_LAUNCHER"
+        printf 'control=%s\n' "$AGY_HOME/.local/bin/agy-t"
+        return 0
+    fi
+    if [ -f "$AGY_PROJECT_ROOT/bin/install-runtime.sh" ]; then
+        bash "$AGY_PROJECT_ROOT/bin/install-runtime.sh" --install
+        return $?
+    fi
+    printf 'install: runtime assets missing. Run main install.sh bootstrap from repository.\n' >&2
+    return 2
+}
+
+agy_paths() {
+    printf 'public launcher: %s\n' "$AGY_USER_LAUNCHER"
+    printf 'public local shim: %s\n' "$AGY_HOME/.local/bin/agy"
+    printf 'management cmd: %s\n' "$AGY_HOME/.local/bin/agy-t"
+    printf 'raw private: %s\n' "$AGY_RAW"
+    printf 'patched runtime private: %s\n' "$AGY_PATCHED"
+    printf 'state file: %s\n' "$AGY_STATE_FILE"
+}
+
+agy_route() {
+    if [ "${1:-}" = "--" ]; then
+        shift
+    fi
+    agy_run_patched "$@"
+}
+
+agy_debug_bundle() {
+    local last
+    last=$(agy_last_case_path || true)
+    printf 'last_case=%s\n' "${last:-none}"
+    if [ -n "${last:-}" ] && [ -d "$last" ]; then
+        ls -1 "$last" 2>/dev/null || true
+    fi
+}
+
 case "${1:-}" in
     status) agy_status ;;
     doctor) agy_doctor ;;
     update) shift; agy_update_termux "$@" ;;
     repair) agy_repair control-plane ;;
     rollback) shift; agy_rollback_termux "$@" ;;
-    install-launcher) bash "$AGY_PROJECT_ROOT/bin/install-runtime.sh" --install-launcher ;;
+    install-launcher) agy_install_safe ;;
     install-shell-wrapper) bash "$AGY_PROJECT_ROOT/bin/install-runtime.sh" --install-shell-wrapper ;;
     test-native) agy_test_native ;;
     test-proot) agy_test_proot ;;
+    install) agy_install_safe ;;
+    paths) agy_paths ;;
+    route) shift; agy_route "$@" ;;
+    debug) shift; [ "${1:-}" = "bundle" ] && agy_debug_bundle || { usage >&2; exit 2; } ;;
     version) printf 'agy-termux control-plane 1\n' ;;
     uninstall) shift; agy_uninstall "$@" ;;
     -h|--help|"") usage ;;

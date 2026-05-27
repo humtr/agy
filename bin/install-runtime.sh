@@ -36,13 +36,26 @@ agy_build_launcher() {
 
 install_control_plane() {
     local control_runtime="$AGY_RUNTIME_DIR/agy-termux-control.sh"
-    mkdir -p "$AGY_RUNTIME_DIR" "$(dirname "$AGY_HOME/bin/agy-termux")"
+    mkdir -p "$AGY_RUNTIME_DIR" "$(dirname "$AGY_HOME/bin/agy-termux")" "$(dirname "$AGY_HOME/.local/bin/agy-t")" "$(dirname "$AGY_HOME/bin/agy-t")"
     cp "$ROOT_DIR/tools/agy-termux-control.sh" "$control_runtime"
     chmod 755 "$control_runtime"
+    cat >"$AGY_HOME/.local/bin/agy-t" <<EOF
+#!/bin/sh
+set -eu
+exec "$PREFIX/bin/bash" "$control_runtime" "\$@"
+EOF
+    chmod 755 "$AGY_HOME/.local/bin/agy-t"
+    cat >"$AGY_HOME/bin/agy-t" <<EOF
+#!/bin/sh
+set -eu
+exec "$AGY_HOME/.local/bin/agy-t" "\$@"
+EOF
+    chmod 755 "$AGY_HOME/bin/agy-t"
     cat >"$AGY_HOME/bin/agy-termux" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-exec "$control_runtime" "\$@"
+#!/bin/sh
+set -eu
+printf 'agy-termux is deprecated; use agy-t\\n' >&2
+exec "$PREFIX/bin/bash" "$control_runtime" "\$@"
 EOF
     chmod 755 "$AGY_HOME/bin/agy-termux"
 }
@@ -50,7 +63,7 @@ EOF
 install_shell_fallback() {
     mkdir -p "$AGY_RUNTIME_DIR"
 cat >"$AGY_RUNTIME_DIR/agy-shell-wrapper.sh" <<EOF
-#!/usr/bin/env bash
+#!$PREFIX/bin/bash
 set -euo pipefail
 unset LD_PRELOAD LD_LIBRARY_PATH
 LIB="$AGY_RUNTIME_DIR/lib.sh"
@@ -79,6 +92,36 @@ install_compiled_launcher() {
     chmod 755 "$launcher_bin"
 }
 
+install_local_launcher_shim() {
+    local local_launcher="$AGY_HOME/.local/bin/agy"
+    mkdir -p "$(dirname "$local_launcher")"
+    cat >"$local_launcher" <<EOF
+#!/bin/sh
+set -eu
+exec "$AGY_USER_WRAPPER" "\$@"
+EOF
+    chmod 755 "$local_launcher"
+}
+
+migrate_legacy_raw() {
+    local legacy_raw="$AGY_HOME/.local/bin/agy"
+    local legacy_runtime_raw="$AGY_HOME/.local/bin/agy.raw-legacy"
+    mkdir -p "$(dirname "$AGY_RAW")"
+    if [ -x "$AGY_RAW" ]; then
+        return 0
+    fi
+    if [ -x "$legacy_raw" ] && file "$legacy_raw" 2>/dev/null | grep -q 'ELF'; then
+        cp -p "$legacy_raw" "$AGY_RAW"
+        chmod 755 "$AGY_RAW"
+        mv "$legacy_raw" "$legacy_runtime_raw"
+        return 0
+    fi
+    if [ -x "$legacy_runtime_raw" ]; then
+        cp -p "$legacy_runtime_raw" "$AGY_RAW"
+        chmod 755 "$AGY_RAW"
+    fi
+}
+
 install_wrappers() {
     mkdir -p "$(dirname "$AGY_USER_WRAPPER")" "$AGY_RUNTIME_DIR" "$AGY_STATE_DIR"
 
@@ -90,7 +133,7 @@ install_wrappers() {
     chmod 644 "$AGY_RUNTIME_DIR/verified-agy-version.env"
 
 cat >"$AGY_EXEC_WRAPPER" <<EOF
-#!/usr/bin/env bash
+#!$PREFIX/bin/bash
 set -euo pipefail
 unset LD_PRELOAD LD_LIBRARY_PATH
 LIB="$AGY_RUNTIME_DIR/lib.sh"
@@ -113,6 +156,7 @@ EOF
     fi
     install_control_plane
     install_shell_fallback
+    install_local_launcher_shim
     ensure_user_path
     install_prefix_wrapper
 
@@ -133,6 +177,8 @@ EOF
     echo "  $AGY_RUNTIME_DIR/agy-shell-wrapper.sh"
     echo "Installed PATH command:"
     echo "  $AGY_USER_WRAPPER"
+    echo "  $AGY_HOME/.local/bin/agy"
+    echo "  $AGY_HOME/.local/bin/agy-t"
     echo "  $AGY_PREFIX/bin/agy"
     echo "  $AGY_EXEC_WRAPPER"
     echo "Installed runtime support:"
@@ -157,7 +203,7 @@ install_prefix_wrapper() {
     fi
 
     cat >"$prefix_wrapper" <<EOF
-#!/usr/bin/env bash
+#!/bin/sh
 # agy-termux managed prefix wrapper
 exec "$AGY_USER_WRAPPER" "\$@"
 EOF
@@ -203,6 +249,7 @@ action="${1:---status}"
 case "$action" in
     --install)
         install_wrappers
+        migrate_legacy_raw
         agy_update_broker explicit
         ;;
     --status)
@@ -210,10 +257,12 @@ case "$action" in
         ;;
     --repair)
         install_wrappers
+        migrate_legacy_raw
         agy_repair setup
         ;;
     --install-wrappers)
         install_wrappers
+        migrate_legacy_raw
         ;;
     --install-launcher)
         install_compiled_launcher

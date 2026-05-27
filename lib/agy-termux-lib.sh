@@ -5,12 +5,13 @@ AGY_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGY_PROJECT_ROOT="${AGY_PROJECT_ROOT:-$(cd "$AGY_LIB_DIR/.." && pwd)}"
 AGY_HOME="${AGY_HOME:-$HOME}"
 AGY_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
-AGY_RAW="${AGY_RAW:-$AGY_HOME/.local/bin/agy}"
-AGY_RUNTIME_DIR="${AGY_RUNTIME_DIR:-$AGY_HOME/.local/lib/agy-termux}"
+AGY_NATIVE_ROOT="${AGY_NATIVE_ROOT:-$AGY_HOME/.local/lib/agy/native}"
+AGY_RAW="${AGY_RAW:-$AGY_NATIVE_ROOT/raw/agy}"
+AGY_RUNTIME_DIR="${AGY_RUNTIME_DIR:-$AGY_NATIVE_ROOT/runtime}"
 AGY_PATCHED="${AGY_PATCHED:-$AGY_RUNTIME_DIR/agy}"
 AGY_EXEC_WRAPPER="${AGY_EXEC_WRAPPER:-$AGY_RUNTIME_DIR/run}"
 AGY_USER_WRAPPER="${AGY_USER_WRAPPER:-$AGY_HOME/bin/agy}"
-AGY_STATE_DIR="${AGY_STATE_DIR:-$AGY_HOME/.local/share/agy-termux}"
+AGY_STATE_DIR="${AGY_STATE_DIR:-$AGY_HOME/.local/share/agy/native}"
 AGY_STATE_FILE="${AGY_STATE_FILE:-$AGY_STATE_DIR/state.env}"
 AGY_DOCTOR_BASE="${AGY_DOCTOR_BASE:-$AGY_STATE_DIR/doctor}"
 if [ -z "${AGY_RUNTIME_BUILDER:-}" ]; then
@@ -30,6 +31,7 @@ AGY_RESOLVER_FD=33
 AGY_RESOLVER_PROBE_HOST="${AGY_RESOLVER_PROBE_HOST:-oauth2.googleapis.com}"
 AGY_MANIFEST_URL="${AGY_MANIFEST_URL:-https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_arm64.json}"
 AGY_VERSIONED_MANIFEST_BASE="${AGY_VERSIONED_MANIFEST_BASE:-https://storage.googleapis.com/antigravity-public/antigravity-cli}"
+AGY_AUTO_UPDATE_TIMEOUT="${AGY_AUTO_UPDATE_TIMEOUT:-4}"
 if [ -z "${AGY_FALLBACK_VERSION_FILE:-}" ]; then
     if [ -f "$AGY_LIB_DIR/verified-agy-version.env" ]; then
         AGY_FALLBACK_VERSION_FILE="$AGY_LIB_DIR/verified-agy-version.env"
@@ -492,7 +494,11 @@ agy_update_broker_once() {
         printf 'agy: checking %s update source...\n' "$source_label" >&2
     fi
     set +e
-    curl -fsSL "$manifest_url" >"$manifest" 2>"$tmp_dir/update.log"
+    if [ "$mode" = "auto" ]; then
+        curl -fsSL --connect-timeout "$AGY_AUTO_UPDATE_TIMEOUT" --max-time "$AGY_AUTO_UPDATE_TIMEOUT" "$manifest_url" >"$manifest" 2>"$tmp_dir/update.log"
+    else
+        curl -fsSL "$manifest_url" >"$manifest" 2>"$tmp_dir/update.log"
+    fi
     status=$?
     set -e
     if [ "$status" -ne 0 ]; then
@@ -556,7 +562,11 @@ agy_update_broker_once() {
         printf 'agy: updating official binary %s -> %s from %s...\n' "${current:-unknown}" "$latest" "$source_label" >&2
     fi
     set +e
-    curl -fsSL "$url" >"$tmp_dir/agy.tgz" 2>"$tmp_dir/update.log"
+    if [ "$mode" = "auto" ]; then
+        curl -fsSL --connect-timeout "$AGY_AUTO_UPDATE_TIMEOUT" --max-time "$AGY_AUTO_UPDATE_TIMEOUT" "$url" >"$tmp_dir/agy.tgz" 2>"$tmp_dir/update.log"
+    else
+        curl -fsSL "$url" >"$tmp_dir/agy.tgz" 2>"$tmp_dir/update.log"
+    fi
     status=$?
     set -e
     if [ "$status" -ne 0 ]; then
@@ -826,9 +836,16 @@ agy_main() {
     fi
 
     if [ "$mode" = "install" ]; then
-        printf "agy: install is managed by Termux installer workflow.\n" >&2
-        printf "agy: use 'bash bin/install-runtime.sh --install-wrappers' from a repository checkout.\n" >&2
-        return 2
+        if [ "${AGY_ALLOW_UPSTREAM_INSTALL:-0}" = "1" ]; then
+            :
+        else
+            if [ -x "$AGY_USER_WRAPPER" ] && [ -x "$AGY_PATCHED" ]; then
+                printf "agy: install already initialized on Termux.\n" >&2
+                return 0
+            fi
+            printf "agy: install requires bootstrap. Run main install.sh from repository.\n" >&2
+            return 2
+        fi
     fi
 
     if [ "$mode" = "bare" ]; then
