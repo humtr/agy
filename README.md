@@ -16,7 +16,25 @@ Termux/Android에서 Linux(glibc)용 `agy`를 안정적으로 실행하기 위�
 - glibc 라이브러리 경로는 loader `--library-path` 인자로만 전달
 - `proot`은 기본 경로가 아니라 진단 fallback 전용
 
-## 설치/상태
+## 빠른 설치
+
+공식 원라인(installer 브랜치 부트스트랩):
+
+```bash
+pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/humtr/agy/installer/install.sh | bash
+```
+
+레포 기반(main 체크아웃 후 동일 installer 엔진 실행):
+
+```bash
+pkg install -y git
+git clone --branch main https://github.com/humtr/agy.git ~/prj/agy
+cd ~/prj/agy
+bash bin/install-runtime.sh --install-wrappers
+bash bin/install-runtime.sh --repair
+```
+
+## 설치/상태 (installer 엔진 직접 실행)
 
 ```bash
 bash bin/install-runtime.sh --install-wrappers
