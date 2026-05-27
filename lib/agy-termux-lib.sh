@@ -351,6 +351,60 @@ agy_preflight() {
     fi
 }
 
+agy_cheap_launch_guard() {
+    [ -x "$AGY_PATCHED" ] || { printf 'agy: patched runtime missing: %s\n' "$AGY_PATCHED" >&2; return 65; }
+    [ -x "$AGY_LOADER" ] || { printf 'agy: loader missing: %s\n' "$AGY_LOADER" >&2; return 65; }
+    [ -r "$AGY_RESOLV_CONF" ] || { printf 'agy: resolver source unreadable: %s\n' "$AGY_RESOLV_CONF" >&2; return 66; }
+    return 0
+}
+
+agy_light_preflight() {
+    agy_cheap_launch_guard || return $?
+    agy_load_state
+    if agy_needs_repatch; then
+        printf 'agy: runtime drift detected; run "agy update" or "agy-termux repair".\n' >&2
+    fi
+    return 0
+}
+
+agy_mode_for_args() {
+    local first="${1:-}"
+    case "$first" in
+        "")
+            printf 'bare\n'
+            return 0
+            ;;
+        update|upgrade|self-update)
+            printf 'update\n'
+            return 0
+            ;;
+        --help|-h|help)
+            printf 'help\n'
+            return 0
+            ;;
+        --print|-p|--prompt|--print-timeout)
+            printf 'headless\n'
+            return 0
+            ;;
+        --continue|--conversation|--prompt-interactive|--add-dir|--sandbox|--log-file|--dangerously-skip-permissions)
+            printf 'automation\n'
+            return 0
+            ;;
+        plugin|plugins|changelog)
+            printf 'automation\n'
+            return 0
+            ;;
+        install)
+            printf 'install\n'
+            return 0
+            ;;
+        *)
+            printf 'normal\n'
+            return 0
+            ;;
+    esac
+}
+
 agy_current_version() {
     agy_run_candidate "$AGY_PATCHED" --version 2>/dev/null | sed -n '1p'
 }
@@ -756,25 +810,43 @@ agy_termux_menu() {
 }
 
 agy_main() {
+    local mode first
+    first="${1:-}"
+    mode="$(agy_mode_for_args "$first")"
+
     if [ "${1:-}" = "termux" ] && [ "${AGY_PASSTHROUGH_TERMUX:-0}" != "1" ]; then
         agy_termux_menu
         return 0
     fi
 
-    if [ "${1:-}" = "update" ]; then
+    if [ "$mode" = "update" ]; then
         agy_preflight || return $?
         agy_update_broker explicit
         return $?
     fi
 
-    agy_preflight || return $?
-    agy_auto_update "${1:-}" || return $?
-    agy_preflight || return $?
-    if [ "${1:-}" != "--version" ]; then
+    if [ "$mode" = "install" ]; then
+        printf "agy: install is managed by Termux installer workflow.\n" >&2
+        printf "agy: use 'bash bin/install-runtime.sh --install-wrappers' from a repository checkout.\n" >&2
+        return 2
+    fi
+
+    if [ "$mode" = "bare" ]; then
+        agy_light_preflight || return $?
+        agy_auto_update "$first" || return $?
+    else
+        agy_cheap_launch_guard || return $?
+    fi
+
+    if [ "$mode" != "help" ] && [ "$first" != "--version" ]; then
         printf 'agy: starting Antigravity CLI...\n' >&2
     fi
     local before after temp_raw exit_code case_dir
-    before=$(agy_sha256 "$AGY_RAW")
+    before=""
+    after=""
+    if [ "$mode" = "bare" ]; then
+        before=$(agy_sha256 "$AGY_RAW")
+    fi
     temp_raw="${TMPDIR:-/tmp}/agy_raw_$$"
     : >"$temp_raw"
     set +e
@@ -782,7 +854,9 @@ agy_main() {
     agy_runtime_command "$AGY_PATCHED" "$@" 2> >(tee "$temp_raw" >&2)
     exit_code=$?
     set -e
-    after=$(agy_sha256 "$AGY_RAW")
+    if [ "$mode" = "bare" ]; then
+        after=$(agy_sha256 "$AGY_RAW")
+    fi
     if [ -n "$before" ] && [ -n "$after" ] && [ "$before" != "$after" ]; then
         agy_mark_raw_changed
         printf 'Raw agy changed during execution. Rebuilding runtime copy now...\n' >&2

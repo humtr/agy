@@ -52,62 +52,33 @@ agy-termux ...
 
 ## Reliability Model
 
-The main reliability mechanism is:
+Execution policy is command-surface aware:
 
-1. Preflight consistency check.
-2. Wrapper-controlled `agy update` check before normal commands.
-3. Transactional repatch if raw/patched/state/wrapper validation fails or the
-   updater changes the raw binary.
-4. Runtime-copy execution only after validation.
-5. Postflight raw-hash detection.
+1. cheap launch guard: runtime/loader/resolver readability checks
+2. light preflight: cheap guard + drift warning (non-destructive)
+3. full preflight: lifecycle validation/repair checks
 
-Preflight checks:
+Command policy:
 
-- raw `~/.local/bin/agy` exists
-- patched `~/.local/lib/agy-termux/agy` exists and is executable
-- `~/.local/lib/agy-termux/run` wrapper references the runtime copy
-- glibc loader exists
-- Termux CA bundle exists
-- `state.env` matches current raw and patched hashes
-- runtime copy passes `--version`
+- bare `agy`: light preflight + update check
+- `agy update|upgrade|self-update`: full preflight + full update pipeline
+- `agy --print`, `-p`, `--prompt`, `--print-timeout`: cheap guard only
+- `agy --help`, `-h`, `help`: fast path, no update output mixing
+- `agy plugin|plugins|changelog` and automation-style flags: cheap guard only
+- `agy install`: control-plane managed path
 
-Repair builds a candidate patched binary in the state directory, applies the
-VA39 and `faccessat2` compatibility patches to that copy, sets the glibc loader
-with `patchelf`, validates the candidate, backs up the previous patched binary,
-then atomically moves the candidate into place.
+Normal runtime commands stay on compiled-launcher mediation and passthrough to
+patched runtime without heavy per-run lifecycle work.
 
 ## Updating Agy
 
-If the official updater replaces `~/.local/bin/agy`, the next wrapper invocation
-detects the raw hash mismatch and rebuilds the runtime copy before normal execution.
-For normal commands, the wrapper checks the official Linux ARM64 manifest first.
-If the manifest version is newer than the current runtime copy, the wrapper
-downloads the manifest tarball into a temporary candidate path, verifies its
-`sha512`, builds and validates a candidate runtime copy, then promotes the raw
-binary and runtime copy together only after validation succeeds.
+`agy update` (and aliases `upgrade`, `self-update`) is the only full lifecycle
+update entrypoint. It performs manifest check, checksum verification, candidate
+build, validation, lock-held atomic promotion, and state update.
 
-If a new upstream version cannot be prepared for Termux, the wrapper keeps the
-last verified raw/runtime pair and records the failed upstream version in
-`state.env`. Later normal `agy` runs do not repeatedly retry the same failed
-version; they run the verified version and tell the user to run `agy update` to
-retry explicitly.
-
-Manual `agy update` is still allowed. If that command changes the raw binary,
-the wrapper performs the same manifest/tarball update broker instead of running
-the patched binary's built-in updater. This is intentional: running the built-in
-updater from the runtime copy can update the currently executed runtime path rather
-than the preserved raw path.
-
-Known limitation: if the patched process internally installs a new raw binary
-and immediately `execve`s the absolute raw path `~/.local/bin/agy` inside the
-same process, wrapper preflight may be bypassed for that immediate restart.
-Postflight raw-change detection marks `NEEDS_REPATCH=1`, so the next invocation
-repairs before running.
-
-No safe official environment variable, config option, or flag for disabling
-Antigravity auto-update was confirmed from local binary inspection. This wrapper
-therefore uses update-before-run, verified tarball replacement, detection, and
-repair rather than unsafe `execve` hooks.
+Normal commands do not run full hash verification/smoke/repair loops on every
+invocation. Postflight strengthening is reserved for actual promotion/update
+events.
 
 Resolver handling is strict native fd mode. The compiled launcher opens
 `$PREFIX/etc/resolv.conf` on fd 33 for the patched runtime.
@@ -195,8 +166,8 @@ diagnostic branch.
 
 ## Setup And Repair
 
-This `main` branch is the canonical runtime source. It does not require the
-optional `installer` branch.
+`main` branch is the canonical runtime source and includes the one-line
+bootstrap script at `install.sh`.
 
 Fresh install after cloning the repository:
 
@@ -211,8 +182,11 @@ cd ~/prj/agy
 bash bin/install-runtime.sh --install
 ```
 
-The `installer` branch only adds a convenience `install.sh` bootstrapper around
-this same runtime workflow.
+One-line bootstrap (same `main` source, same installer engine):
+
+```bash
+pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/humtr/agy/main/install.sh | bash
+```
 
 This installs `~/bin/agy`, `$PREFIX/bin/agy`, and
 `~/.local/lib/agy-termux/run`, downloads the current raw Linux ARM64 `agy`

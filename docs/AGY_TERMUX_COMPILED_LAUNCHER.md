@@ -13,6 +13,13 @@
 
 Both parts must exist together.
 
+Command execution policy:
+
+- `agy` (bare): light preflight + update check, then runtime exec.
+- `agy update|upgrade|self-update`: full lifecycle pipeline with lock.
+- headless/help/automation commands: cheap launch guard only, no auto-update.
+- regular upstream commands: launcher mediation only, then patched runtime passthrough.
+
 ## LD Isolation
 
 - Do not export `LD_LIBRARY_PATH` or `LD_PRELOAD` in shell startup files.
@@ -34,6 +41,10 @@ Reserved lifecycle commands are intercepted:
 - `agy self-update`
 
 These route to `agy-termux update` and do not call upstream self-update.
+
+`agy install` is a managed install/config path. Launcher/shell fallback can
+guide users to installer workflow instead of treating it as a normal runtime
+passthrough command.
 
 Management words (`status`, `doctor`, `repair`, `rollback`, `fallback`,
 `install`, `uninstall`) are not hard-intercepted. They remain passthrough by

@@ -103,7 +103,11 @@ static int exec_control(const char *control_path, int argc, char **argv, enum ro
         outv[j++] = "update";
         for (i = sub_idx + 1; i < argc; i++) outv[j++] = argv[i];
     } else if (action == ROUTE_CONTROL_ALIAS) {
-        outv[j++] = argv[sub_idx];
+        if (sub_idx >= 0 && streq(argv[sub_idx], "install")) {
+            outv[j++] = "install-launcher";
+        } else {
+            outv[j++] = argv[sub_idx];
+        }
         for (i = sub_idx + 1; i < argc; i++) outv[j++] = argv[i];
     } else {
         for (i = 2; i < argc; i++) outv[j++] = argv[i];
@@ -183,7 +187,11 @@ int main(int argc, char **argv) {
             route.action = ROUTE_CONTROL_ALIAS;
             debug_log("management alias redirect enabled for %s", argv[1]);
         } else {
-            fprintf(stderr, "agy-launcher: '%s' is a Termux control-plane command. Use 'agy-termux %s'.\n", argv[1], argv[1]);
+            if (streq(argv[1], "install")) {
+                fprintf(stderr, "agy-launcher: '%s' is a managed install command. Use 'agy-termux install-launcher'.\n", argv[1]);
+            } else {
+                fprintf(stderr, "agy-launcher: '%s' is a Termux control-plane command. Use 'agy-termux %s'.\n", argv[1], argv[1]);
+            }
         }
     }
     if (route.action == ROUTE_UPDATE || route.action == ROUTE_CONTROL_ALIAS) {
