@@ -15,6 +15,12 @@ AGY_NATIVE_ROOT="${AGY_NATIVE_ROOT:-$HOME/.local/lib/agy/native}"
 AGY_RUNTIME_DIR="${AGY_RUNTIME_DIR:-$AGY_NATIVE_ROOT/runtime}"
 AGY_VERSION_FILE="${AGY_VERSION_FILE:-$AGY_RUNTIME_DIR/wrapper-version.env}"
 AGY_REPO_PATH=""
+CURRENT_WRAPPER_VERSION="not-installed"
+CURRENT_WRAPPER_COMMIT="unknown"
+CURRENT_WRAPPER_REPO="humtr/agy"
+LATEST_WRAPPER_VERSION="unknown"
+LATEST_WRAPPER_COMMIT="unknown"
+LATEST_WRAPPER_REPO="humtr/agy"
 export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
 
 say() {
@@ -50,19 +56,60 @@ need_termux() {
     [ -x "$PREFIX/bin/pkg" ] || fail 'Termux pkg command not found.'
 }
 
-wrapper_summary() {
-    local label="$1"
+load_current_wrapper() {
+    CURRENT_WRAPPER_VERSION="not-installed"
+    CURRENT_WRAPPER_COMMIT="unknown"
+    CURRENT_WRAPPER_REPO="humtr/agy"
     unset AGY_WRAPPER_VERSION AGY_WRAPPER_CHANNEL AGY_WRAPPER_COMMIT AGY_WRAPPER_REPO AGY_WRAPPER_INSTALLED_AT
-    if [ ! -f "$AGY_VERSION_FILE" ]; then
-        say "$label wrapper: not installed"
-        return 0
+    if [ -f "$AGY_VERSION_FILE" ]; then
+        # shellcheck disable=SC1090
+        . "$AGY_VERSION_FILE"
+        CURRENT_WRAPPER_VERSION="${AGY_WRAPPER_VERSION:-unknown}"
+        CURRENT_WRAPPER_COMMIT="${AGY_WRAPPER_COMMIT:-unknown}"
+        CURRENT_WRAPPER_REPO="${AGY_WRAPPER_REPO:-humtr/agy}"
     fi
-    # shellcheck disable=SC1090
-    . "$AGY_VERSION_FILE"
+}
+
+load_latest_wrapper() {
+    local latest_file="$AGY_REPO_PATH/config/wrapper-version.env"
+    LATEST_WRAPPER_VERSION="unknown"
+    LATEST_WRAPPER_COMMIT="unknown"
+    LATEST_WRAPPER_REPO="humtr/agy"
+    unset AGY_WRAPPER_VERSION AGY_WRAPPER_CHANNEL AGY_WRAPPER_COMMIT AGY_WRAPPER_REPO AGY_WRAPPER_INSTALLED_AT
+    if [ -f "$latest_file" ]; then
+        # shellcheck disable=SC1090
+        . "$latest_file"
+        LATEST_WRAPPER_VERSION="${AGY_WRAPPER_VERSION:-unknown}"
+        LATEST_WRAPPER_REPO="${AGY_WRAPPER_REPO:-humtr/agy}"
+    fi
+    if command -v git >/dev/null 2>&1 && git -C "$AGY_REPO_PATH" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        LATEST_WRAPPER_COMMIT="$(git -C "$AGY_REPO_PATH" rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown')"
+    fi
+}
+
+print_wrapper_revision() {
+    local label="$1" version="$2" commit="$3" repo="$4"
     say "$label wrapper:"
-    say "  version: ${AGY_WRAPPER_VERSION:-unknown}"
-    say "  commit: ${AGY_WRAPPER_COMMIT:-unknown}"
-    say "  repo: ${AGY_WRAPPER_REPO:-humtr/agy}"
+    say "  version: $version"
+    say "  commit: $commit"
+    say "  repo: $repo"
+}
+
+print_wrapper_comparison() {
+    print_wrapper_revision current "$CURRENT_WRAPPER_VERSION" "$CURRENT_WRAPPER_COMMIT" "$CURRENT_WRAPPER_REPO"
+    print_wrapper_revision latest "$LATEST_WRAPPER_VERSION" "$LATEST_WRAPPER_COMMIT" "$LATEST_WRAPPER_REPO"
+    if [ "$CURRENT_WRAPPER_VERSION" = "$LATEST_WRAPPER_VERSION" ] && [ "$CURRENT_WRAPPER_COMMIT" = "$LATEST_WRAPPER_COMMIT" ]; then
+        say "wrapper is already current; refreshing installed support files"
+    elif [ "$CURRENT_WRAPPER_VERSION" = "not-installed" ]; then
+        say "installing wrapper $LATEST_WRAPPER_VERSION ($LATEST_WRAPPER_COMMIT)"
+    else
+        say "updating wrapper $CURRENT_WRAPPER_VERSION ($CURRENT_WRAPPER_COMMIT) -> $LATEST_WRAPPER_VERSION ($LATEST_WRAPPER_COMMIT)"
+    fi
+}
+
+print_installed_wrapper() {
+    load_current_wrapper
+    print_wrapper_revision installed "$CURRENT_WRAPPER_VERSION" "$CURRENT_WRAPPER_COMMIT" "$CURRENT_WRAPPER_REPO"
 }
 
 install_dependencies() {
@@ -159,11 +206,13 @@ main() {
     need_termux
     install_dependencies
     check_glibc
-    wrapper_summary current
+    load_current_wrapper
     prepare_repo
+    load_latest_wrapper
+    print_wrapper_comparison
     say "installing runtime from $AGY_REPO_PATH"
     run bash "$AGY_REPO_PATH/bin/install-runtime.sh" --install
-    wrapper_summary installed
+    print_installed_wrapper
     if [ "$AGY_INSTALL_DRY_RUN" != "1" ]; then
         AGY_SKIP_AUTO_UPDATE=1 "$HOME/bin/agy" info >/dev/null
         say "verified wrapper command: $HOME/bin/agy"
