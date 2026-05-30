@@ -14,11 +14,11 @@ Default action: --status
 Actions:
   --install          Install wrappers, download/update raw agy, and build the runtime copy.
   --status           Print current wrapper/runtime status.
-  --repair           Transactionally rebuild ~/.local/lib/agy-termux/agy from raw agy.
-  --install-wrappers Install compiled launcher + agy-termux control plane (and shell fallback).
+  --repair           Reinstall wrappers and rebuild the patched runtime copy from raw agy.
+  --install-wrappers Install the agy launcher, runtime support files, and shell fallback.
   --install-launcher Build/install compiled launcher at ~/bin/agy.
   --install-shell-wrapper Install shell fallback wrapper.
-  --init-state       Initialize state.env after validating the current runtime copy.
+  --init-state       Initialize state.json after validating the current runtime copy.
 
 This script never modifies the raw official agy binary in place and never runs
 agy auth login.
@@ -34,30 +34,20 @@ agy_build_launcher() {
     clang -O2 -Wall -Wextra -o "$out" "$ROOT_DIR/tools/agy-launcher.c"
 }
 
-install_control_plane() {
-    local control_runtime="$AGY_RUNTIME_DIR/agy-termux-control.sh"
-    mkdir -p "$AGY_RUNTIME_DIR" "$(dirname "$AGY_HOME/bin/agy-termux")" "$(dirname "$AGY_HOME/.local/bin/agy-t")" "$(dirname "$AGY_HOME/bin/agy-t")"
-    cp "$ROOT_DIR/tools/agy-termux-control.sh" "$control_runtime"
-    chmod 755 "$control_runtime"
-    cat >"$AGY_HOME/.local/bin/agy-t" <<EOF
-#!/bin/sh
-set -eu
-exec "$PREFIX/bin/bash" "$control_runtime" "\$@"
-EOF
-    chmod 755 "$AGY_HOME/.local/bin/agy-t"
-    cat >"$AGY_HOME/bin/agy-t" <<EOF
-#!/bin/sh
-set -eu
-exec "$AGY_HOME/.local/bin/agy-t" "\$@"
-EOF
-    chmod 755 "$AGY_HOME/bin/agy-t"
-    cat >"$AGY_HOME/bin/agy-termux" <<EOF
-#!/bin/sh
-set -eu
-printf 'agy-termux is deprecated; use agy-t\\n' >&2
-exec "$PREFIX/bin/bash" "$control_runtime" "\$@"
-EOF
-    chmod 755 "$AGY_HOME/bin/agy-termux"
+remove_legacy_control_shims() {
+    local p
+    for p in \
+        "$AGY_HOME/.local/bin/agy-t" \
+        "$AGY_HOME/bin/agy-t" \
+        "$AGY_HOME/bin/agy-termux" \
+        "$AGY_PREFIX/bin/agy-t" \
+        "$AGY_PREFIX/bin/agy-termux"; do
+        if [ -e "$p" ]; then
+            rm -f "$p"
+            echo "Removed legacy control shim:"
+            echo "  $p"
+        fi
+    done
 }
 
 install_shell_fallback() {
@@ -154,11 +144,11 @@ EOF
         echo "clang unavailable, installed shell fallback launcher:"
         echo "  $AGY_USER_WRAPPER"
     fi
-    install_control_plane
     install_shell_fallback
     install_local_launcher_shim
-    ensure_user_path
     install_prefix_wrapper
+    remove_legacy_control_shims
+    ensure_user_path
 
     mkdir -p "$AGY_SHIM_DIR"
     if [ -f "$AGY_GLIBC_LIB/libc.so.6" ]; then
@@ -171,20 +161,17 @@ EOF
     [ -f "$AGY_PREFIX/glibc/etc/nsswitch.conf" ] || printf 'hosts: files dns\n' >"$AGY_PREFIX/glibc/etc/nsswitch.conf"
     [ -f "$AGY_PREFIX/glibc/etc/hosts" ] || printf '127.0.0.1 localhost\n' >"$AGY_PREFIX/glibc/etc/hosts"
 
-    echo "Installed control command:"
-    echo "  $AGY_HOME/bin/agy-termux"
-    echo "Installed shell fallback:"
-    echo "  $AGY_RUNTIME_DIR/agy-shell-wrapper.sh"
     echo "Installed PATH command:"
     echo "  $AGY_USER_WRAPPER"
     echo "  $AGY_HOME/.local/bin/agy"
-    echo "  $AGY_HOME/.local/bin/agy-t"
     echo "  $AGY_PREFIX/bin/agy"
     echo "  $AGY_EXEC_WRAPPER"
     echo "Installed runtime support:"
     echo "  $AGY_RUNTIME_DIR/lib.sh"
     echo "  $AGY_RUNTIME_DIR/build-runtime.py"
     echo "  $AGY_RUNTIME_DIR/verified-agy-version.env"
+    echo "Installed shell fallback:"
+    echo "  $AGY_RUNTIME_DIR/agy-shell-wrapper.sh"
     echo "Ensured startup PATH includes:"
     echo "  $HOME/bin"
     echo "Note: refresh shell command cache with 'hash -r' (bash) or 'rehash' (zsh)."
