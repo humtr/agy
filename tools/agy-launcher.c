@@ -76,6 +76,7 @@ static struct route decide_route(int argc, char **argv) {
     if (streq(argv[1], "install")) return (struct route){ROUTE_MANAGED_SHELL, "termux-safe install route"};
     if (streq(argv[1], "repair")) return (struct route){ROUTE_MANAGED_SHELL, "offline repair route"};
     if (streq(argv[1], "sync")) return (struct route){ROUTE_MANAGED_SHELL, "wrapper sync route"};
+    if (streq(argv[1], "info")) return (struct route){ROUTE_MANAGED_SHELL, "wrapper info route"};
     return (struct route){ROUTE_UPSTREAM, "default passthrough"};
 }
 
@@ -167,6 +168,7 @@ int main(int argc, char **argv) {
         else if (streq(argv[1], "install")) mode = "install";
         else if (streq(argv[1], "repair")) mode = "repair";
         else if (streq(argv[1], "sync")) mode = "sync";
+        else if (streq(argv[1], "info")) mode = "info";
         if (exec_managed_shell(bash_path, shell_fallback, argc, argv, mode) < 0) {
             fprintf(stderr, "agy-launcher: failed to exec managed shell path %s: %s\n", shell_fallback, strerror(errno));
             return 126;
