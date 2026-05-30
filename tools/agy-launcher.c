@@ -47,13 +47,11 @@ static void debug_log(const char *fmt, ...) {
 enum route_action {
     ROUTE_UPSTREAM = 0,
     ROUTE_UPDATE,
-    ROUTE_CONTROL_ALIAS,
     ROUTE_MANAGED_SHELL
 };
 
 struct route {
     enum route_action action;
-    const char *cmd;
     const char *reason;
 };
 
@@ -65,21 +63,18 @@ static const char *route_name(enum route_action action) {
     switch (action) {
         case ROUTE_UPSTREAM: return "upstream";
         case ROUTE_UPDATE: return "lifecycle";
-        case ROUTE_CONTROL_ALIAS: return "control-alias";
         case ROUTE_MANAGED_SHELL: return "managed";
     }
     return "unknown";
 }
 
-static struct route decide_route(int argc, char **argv, int *sub_idx) {
-    *sub_idx = -1;
-    if (argc < 2) return (struct route){ROUTE_MANAGED_SHELL, NULL, "bare interactive entrypoint"};
-    if (streq(argv[1], "--")) return (struct route){ROUTE_UPSTREAM, NULL, "explicit -- passthrough"};
-    if (argv[1][0] == '-') return (struct route){ROUTE_UPSTREAM, NULL, "leading option passthrough"};
-    *sub_idx = 1;
-    if (is_lifecycle(argv[1])) return (struct route){ROUTE_UPDATE, "update", "reserved lifecycle command"};
-    if (streq(argv[1], "install")) return (struct route){ROUTE_MANAGED_SHELL, NULL, "termux-safe install route"};
-    return (struct route){ROUTE_UPSTREAM, NULL, "default passthrough"};
+static struct route decide_route(int argc, char **argv) {
+    if (argc < 2) return (struct route){ROUTE_MANAGED_SHELL, "bare interactive entrypoint"};
+    if (streq(argv[1], "--")) return (struct route){ROUTE_UPSTREAM, "explicit -- passthrough"};
+    if (argv[1][0] == '-') return (struct route){ROUTE_UPSTREAM, "leading option passthrough"};
+    if (is_lifecycle(argv[1])) return (struct route){ROUTE_UPDATE, "reserved lifecycle command"};
+    if (streq(argv[1], "install")) return (struct route){ROUTE_MANAGED_SHELL, "termux-safe install route"};
+    return (struct route){ROUTE_UPSTREAM, "default passthrough"};
 }
 
 static int open_resolver_fd33(const char *resolver_path) {
@@ -96,31 +91,6 @@ static int open_resolver_fd33(const char *resolver_path) {
     }
     if (clear_cloexec(AGY_RESOLVER_FD) < 0) return -1;
     return 0;
-}
-
-static int exec_control(const char *control_path, int argc, char **argv, enum route_action action, int sub_idx) {
-    int out_argc = 0, i = 0, j = 0;
-    char **outv;
-    out_argc = argc + 3;
-    outv = calloc((size_t)out_argc, sizeof(char *));
-    if (!outv) return -1;
-    outv[j++] = (char *)control_path;
-    if (action == ROUTE_UPDATE) {
-        outv[j++] = "update";
-        for (i = sub_idx + 1; i < argc; i++) outv[j++] = argv[i];
-    } else if (action == ROUTE_CONTROL_ALIAS) {
-        if (sub_idx >= 0 && streq(argv[sub_idx], "install")) {
-            outv[j++] = "install-launcher";
-        } else {
-            outv[j++] = argv[sub_idx];
-        }
-        for (i = sub_idx + 1; i < argc; i++) outv[j++] = argv[i];
-    } else {
-        for (i = 2; i < argc; i++) outv[j++] = argv[i];
-    }
-    outv[j] = NULL;
-    execv(control_path, outv);
-    return -1;
 }
 
 static int exec_managed_shell(const char *bash_path, const char *managed_path, int argc, char **argv, const char *mode) {
@@ -144,7 +114,6 @@ int main(int argc, char **argv) {
     char default_loader[PATH_MAX];
     char default_shim[PATH_MAX];
     char default_glibc[PATH_MAX];
-    char default_control[PATH_MAX];
     char default_shell_fallback[PATH_MAX];
     char default_bash[PATH_MAX];
     char default_cert_file[PATH_MAX];
@@ -157,13 +126,11 @@ int main(int argc, char **argv) {
     const char *loader_path;
     const char *shim_dir;
     const char *glibc_lib;
-    const char *control_path;
     const char *cert_file;
     const char *cert_dir;
     const char *shell_fallback;
     const char *bash_path;
     struct route route;
-    int sub_idx = -1;
     char **exec_argv;
     int i, eargc;
 
@@ -174,7 +141,6 @@ int main(int argc, char **argv) {
     if (safe_join(default_loader, sizeof(default_loader), prefix, "glibc/lib/ld-linux-aarch64.so.1") < 0) return 125;
     if (safe_join(default_shim, sizeof(default_shim), home, ".local/glibc-shim") < 0) return 125;
     if (safe_join(default_glibc, sizeof(default_glibc), prefix, "glibc/lib") < 0) return 125;
-    if (safe_join(default_control, sizeof(default_control), home, ".local/bin/agy-t") < 0) return 125;
     if (safe_join(default_cert_file, sizeof(default_cert_file), prefix, "etc/tls/cert.pem") < 0) return 125;
     if (safe_join(default_cert_dir, sizeof(default_cert_dir), prefix, "etc/tls/certs") < 0) return 125;
     if (safe_join(default_shell_fallback, sizeof(default_shell_fallback), home, ".local/lib/agy/native/runtime/agy-shell-wrapper.sh") < 0) return 125;
@@ -185,29 +151,21 @@ int main(int argc, char **argv) {
     loader_path = env_or("AGY_LOADER", default_loader);
     shim_dir = env_or("AGY_SHIM_DIR", default_shim);
     glibc_lib = env_or("AGY_GLIBC_LIB", default_glibc);
-    control_path = env_or("AGY_TERMUX_CONTROL", default_control);
     cert_file = env_or("AGY_CERT_FILE", default_cert_file);
     cert_dir = env_or("AGY_CERT_DIR", default_cert_dir);
     shell_fallback = env_or("AGY_SHELL_FALLBACK", default_shell_fallback);
     bash_path = env_or("AGY_BASH", default_bash);
 
-    route = decide_route(argc, argv, &sub_idx);
+    route = decide_route(argc, argv);
     debug_log("route decision=%s reason=%s", route_name(route.action), route.reason ? route.reason : "none");
-    if (route.action == ROUTE_MANAGED_SHELL) {
-        const char *mode = (argc < 2) ? "bare" : (streq(argv[1], "install") ? "install" : "managed");
+    if (route.action == ROUTE_MANAGED_SHELL || route.action == ROUTE_UPDATE) {
+        const char *mode = "managed";
+        if (argc < 2) mode = "bare";
+        else if (is_lifecycle(argv[1])) mode = "update";
+        else if (streq(argv[1], "install")) mode = "install";
         if (exec_managed_shell(bash_path, shell_fallback, argc, argv, mode) < 0) {
             fprintf(stderr, "agy-launcher: failed to exec managed shell path %s: %s\n", shell_fallback, strerror(errno));
             return 126;
-        }
-    }
-
-    if (route.action == ROUTE_UPDATE || route.action == ROUTE_CONTROL_ALIAS) {
-        debug_log("control path=%s", control_path);
-        if (exec_control(control_path, argc, argv, route.action, sub_idx) < 0) {
-            if (exec_managed_shell(bash_path, shell_fallback, argc, argv, "recovery-control") < 0) {
-                fprintf(stderr, "agy-launcher: fallback failed after control dispatch error via %s: %s\n", control_path, strerror(errno));
-                return 126;
-            }
         }
     }
 
