@@ -8,6 +8,7 @@ AGY_SOURCE_CACHE="${AGY_SOURCE_CACHE:-$HOME/.local/share/agy/native/source/main}
 AGY_INSTALL_DRY_RUN="${AGY_INSTALL_DRY_RUN:-0}"
 AGY_KEEP_SOURCE="${AGY_KEEP_SOURCE:-0}"
 AGY_USE_CWD_SOURCE="${AGY_USE_CWD_SOURCE:-0}"
+AGY_SYNC_ONLY="${AGY_SYNC_ONLY:-0}"
 AGY_REQUIRED_PACKAGES="${AGY_REQUIRED_PACKAGES:-git curl python tar patchelf coreutils ca-certificates proot}"
 AGY_GLIBC_REPO_PACKAGE="${AGY_GLIBC_REPO_PACKAGE:-glibc-repo}"
 AGY_GLIBC_PACKAGES="${AGY_GLIBC_PACKAGES:-glibc glibc-runner}"
@@ -20,6 +21,10 @@ CURRENT_WRAPPER_COMMIT="unknown"
 LATEST_WRAPPER_VERSION="unknown"
 LATEST_WRAPPER_COMMIT="unknown"
 export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
+
+if [ "${AGY_MANAGED_MODE:-}" = "sync" ]; then
+    AGY_SYNC_ONLY=1
+fi
 
 say() { printf 'agy install: %s\n' "$*" >&2; }
 
@@ -159,12 +164,16 @@ main() {
     if [ "$CURRENT_WRAPPER_VERSION" = "not-installed" ]; then
         say "wrapper install -> $(rev "$LATEST_WRAPPER_VERSION" "$LATEST_WRAPPER_COMMIT")"
     elif [ "$CURRENT_WRAPPER_VERSION" = "$LATEST_WRAPPER_VERSION" ] && [ "$CURRENT_WRAPPER_COMMIT" = "$LATEST_WRAPPER_COMMIT" ]; then
-        say "wrapper reinstall $(rev "$LATEST_WRAPPER_VERSION" "$LATEST_WRAPPER_COMMIT")"
+        say "wrapper overwrite $(rev "$LATEST_WRAPPER_VERSION" "$LATEST_WRAPPER_COMMIT")"
     else
         say "wrapper update $(rev "$CURRENT_WRAPPER_VERSION" "$CURRENT_WRAPPER_COMMIT") -> $(rev "$LATEST_WRAPPER_VERSION" "$LATEST_WRAPPER_COMMIT")"
     fi
 
-    run bash "$AGY_REPO_PATH/bin/install-runtime.sh" --install
+    if [ "$AGY_SYNC_ONLY" = "1" ]; then
+        run bash "$AGY_REPO_PATH/bin/install-runtime.sh" --install-wrappers
+    else
+        run bash "$AGY_REPO_PATH/bin/install-runtime.sh" --install
+    fi
     load_current_wrapper
     say "wrapper installed $(rev "$CURRENT_WRAPPER_VERSION" "$CURRENT_WRAPPER_COMMIT")"
     if [ "$AGY_INSTALL_DRY_RUN" != "1" ]; then
