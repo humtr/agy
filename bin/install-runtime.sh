@@ -62,13 +62,27 @@ LIB="$AGY_RUNTIME_DIR/lib.sh"
 case "\${1:-}" in
     repair)
         shift
+        echo "agy: starting offline repair..." >&2
         agy_repair manual
-        exit \$?
+        rc=\$?
+        if [ "\$rc" -eq 0 ]; then
+            echo "agy: repair completed." >&2
+        else
+            echo "agy: repair failed with exit \$rc." >&2
+        fi
+        exit "\$rc"
         ;;
     sync)
         shift
+        echo "agy: syncing Termux wrapper from main..." >&2
         curl -fsSL https://raw.githubusercontent.com/humtr/agy/main/install.sh | bash
-        exit \$?
+        rc=\$?
+        if [ "\$rc" -eq 0 ]; then
+            echo "agy: sync completed. Refresh shell command cache with: hash -r" >&2
+        else
+            echo "agy: sync failed with exit \$rc." >&2
+        fi
+        exit "\$rc"
         ;;
 esac
 agy_main "\$@"
