@@ -84,6 +84,27 @@ agy_wrapper_info() {
     printf 'state: %s\n' "$AGY_STATE_FILE"
     printf 'upstream version command: agy version\n'
 }
+agy_verify_current_entrypoint() {
+    resolved=\$(command -v agy 2>/dev/null || true)
+    case "\$resolved" in
+        "$AGY_USER_WRAPPER"|"$AGY_HOME/.local/bin/agy"|"$AGY_PREFIX/bin/agy")
+            ;;
+        "")
+            echo "agy: verification failed: agy is not found on PATH." >&2
+            return 1
+            ;;
+        *)
+            echo "agy: verification failed: current PATH resolves agy to unexpected path: \$resolved" >&2
+            return 1
+            ;;
+    esac
+    if AGY_SKIP_AUTO_UPDATE=1 agy info >/dev/null 2>&1; then
+        echo "agy: verified current command: \$resolved" >&2
+        return 0
+    fi
+    echo "agy: verification failed: agy info did not run through the updated wrapper." >&2
+    return 1
+}
 case "\${1:-}" in
     info)
         shift
@@ -108,7 +129,12 @@ case "\${1:-}" in
         curl -fsSL https://raw.githubusercontent.com/humtr/agy/main/install.sh | bash
         rc=\$?
         if [ "\$rc" -eq 0 ]; then
-            echo "agy: sync completed. Refresh shell command cache with: hash -r" >&2
+            if agy_verify_current_entrypoint; then
+                echo "agy: sync completed and verified." >&2
+            else
+                echo "agy: sync completed, but the current command resolution is stale." >&2
+                echo "agy: run now: hash -r" >&2
+            fi
         else
             echo "agy: sync failed with exit \$rc." >&2
         fi
@@ -243,7 +269,6 @@ EOF
     echo "  $AGY_RUNTIME_DIR/agy-shell-wrapper.sh"
     echo "Ensured startup PATH includes:"
     echo "  $HOME/bin"
-    echo "Note: refresh shell command cache with 'hash -r' (bash) or 'rehash' (zsh)."
 }
 
 install_prefix_wrapper() {
