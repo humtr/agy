@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091
 . "$ROOT_DIR/lib/agy-termux-lib.sh"
+AGY_BACKUP_KEEP="${AGY_BACKUP_KEEP:-2}"
 
 usage() {
     cat <<'EOF'
@@ -40,6 +41,41 @@ agy_source_commit() {
     else
         printf 'unknown\n'
     fi
+}
+
+agy_prune_file_backups() {
+    local pattern="$1"
+    local keep="${2:-$AGY_BACKUP_KEEP}"
+    python3 - "$pattern" "$keep" <<'PY'
+import glob
+import os
+import sys
+
+pattern = sys.argv[1]
+try:
+    keep = max(0, int(sys.argv[2]))
+except Exception:
+    keep = 2
+files = [p for p in glob.glob(pattern) if os.path.isfile(p) and not os.path.islink(p)]
+files.sort(key=lambda p: (os.path.getmtime(p), p), reverse=True)
+for path in files[keep:]:
+    try:
+        os.unlink(path)
+        print("Pruned backup:")
+        print(f"  {path}")
+    except FileNotFoundError:
+        pass
+PY
+}
+
+agy_prune_backups() {
+    agy_prune_file_backups "$AGY_STATE_DIR/agy.launcher.*.bak"
+    agy_prune_file_backups "$AGY_STATE_DIR/agy.runtime.*.bak"
+    agy_prune_file_backups "$AGY_STATE_DIR/agy.raw.*.bak"
+    agy_prune_file_backups "$AGY_PREFIX/bin/agy.backup-*"
+    agy_prune_file_backups "$AGY_STATE_DIR/.profile.backup-*"
+    agy_prune_file_backups "$AGY_STATE_DIR/.bashrc.backup-*"
+    agy_prune_file_backups "$AGY_STATE_DIR/.zshrc.backup-*"
 }
 
 remove_legacy_control_shims() {
@@ -257,6 +293,7 @@ EOF
     install_prefix_wrapper
     remove_legacy_control_shims
     ensure_user_path
+    agy_prune_backups
 
     mkdir -p "$AGY_SHIM_DIR"
     if [ -f "$AGY_GLIBC_LIB/libc.so.6" ]; then
@@ -283,6 +320,7 @@ EOF
     echo "  $AGY_RUNTIME_DIR/agy-shell-wrapper.sh"
     echo "Ensured startup PATH includes:"
     echo "  $HOME/bin"
+    echo "Retained backup files per pattern: $AGY_BACKUP_KEEP"
 }
 
 install_prefix_wrapper() {
@@ -366,11 +404,13 @@ case "$action" in
         ;;
     --install-launcher)
         install_compiled_launcher
+        agy_prune_backups
         ;;
     --install-shell-wrapper)
         install_shell_fallback
         cp "$AGY_RUNTIME_DIR/agy-shell-wrapper.sh" "$AGY_USER_WRAPPER"
         chmod 755 "$AGY_USER_WRAPPER"
+        agy_prune_backups
         ;;
     --init-state)
         init_state
