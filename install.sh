@@ -123,7 +123,7 @@ load_latest_wrapper() {
         LATEST_WRAPPER_VERSION="${AGY_WRAPPER_VERSION:-unknown}"
     fi
     if command -v git >/dev/null 2>&1 && git -C "$AGY_REPO_PATH" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        LATEST_WRAPPER_COMMIT="$(git -C "$AGY_REPO_PATH" rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown')"
+        LATEST_WRAPPER_COMMIT="$(git -C "$AGY_REPO_PATH" rev-parse --short=6 HEAD 2>/dev/null || printf 'unknown')"
     fi
 }
 
@@ -193,36 +193,51 @@ prepare_repo() {
 
 main() {
     need_termux
-    progress 'checking prerequisites'
+    progress 'checking'
     install_dependencies
     check_glibc
     load_current_wrapper
 
-    progress 'fetching wrapper source'
+    progress 'fetching'
     prepare_repo
     load_latest_wrapper
 
-    if [ "$CURRENT_WRAPPER_VERSION" = "not-installed" ]; then
-        say "wrapper install -> $(rev "$LATEST_WRAPPER_VERSION" "$LATEST_WRAPPER_COMMIT")"
-    elif [ "$CURRENT_WRAPPER_VERSION" = "$LATEST_WRAPPER_VERSION" ] && [ "$CURRENT_WRAPPER_COMMIT" = "$LATEST_WRAPPER_COMMIT" ]; then
-        say "wrapper overwrite $(rev "$LATEST_WRAPPER_VERSION" "$LATEST_WRAPPER_COMMIT")"
+    if [ "$AGY_SYNC_ONLY" = "1" ]; then
+        if [ "$CURRENT_WRAPPER_VERSION" = "not-installed" ]; then
+            say "wrapper overwrite $(rev "$LATEST_WRAPPER_VERSION" "$LATEST_WRAPPER_COMMIT")"
+        elif [ "$CURRENT_WRAPPER_VERSION" = "$LATEST_WRAPPER_VERSION" ] && [ "$CURRENT_WRAPPER_COMMIT" = "$LATEST_WRAPPER_COMMIT" ]; then
+            say "wrapper overwrite $(rev "$LATEST_WRAPPER_VERSION" "$LATEST_WRAPPER_COMMIT")"
+        else
+            say "wrapper update $(rev "$CURRENT_WRAPPER_VERSION" "$CURRENT_WRAPPER_COMMIT") -> $(rev "$LATEST_WRAPPER_VERSION" "$LATEST_WRAPPER_COMMIT")"
+        fi
     else
-        say "wrapper update $(rev "$CURRENT_WRAPPER_VERSION" "$CURRENT_WRAPPER_COMMIT") -> $(rev "$LATEST_WRAPPER_VERSION" "$LATEST_WRAPPER_COMMIT")"
+        if [ "$CURRENT_WRAPPER_VERSION" = "not-installed" ]; then
+            say "wrapper install -> $(rev "$LATEST_WRAPPER_VERSION" "$LATEST_WRAPPER_COMMIT")"
+        elif [ "$CURRENT_WRAPPER_VERSION" = "$LATEST_WRAPPER_VERSION" ] && [ "$CURRENT_WRAPPER_COMMIT" = "$LATEST_WRAPPER_COMMIT" ]; then
+            say "wrapper overwrite $(rev "$LATEST_WRAPPER_VERSION" "$LATEST_WRAPPER_COMMIT")"
+        else
+            say "wrapper update $(rev "$CURRENT_WRAPPER_VERSION" "$CURRENT_WRAPPER_COMMIT") -> $(rev "$LATEST_WRAPPER_VERSION" "$LATEST_WRAPPER_COMMIT")"
+        fi
     fi
 
-    progress 'installing wrapper files'
+    progress 'installing'
     if [ "$AGY_SYNC_ONLY" = "1" ]; then
-        run_quiet bash "$AGY_REPO_PATH/bin/install-runtime.sh" --install-wrappers
+        AGY_MANAGED_MODE=sync run_quiet bash "$AGY_REPO_PATH/bin/install-runtime.sh" --install-wrappers
     else
         run bash "$AGY_REPO_PATH/bin/install-runtime.sh" --install
     fi
 
-    load_current_wrapper
-    say "wrapper installed $(rev "$CURRENT_WRAPPER_VERSION" "$CURRENT_WRAPPER_COMMIT")"
     if [ "$AGY_INSTALL_DRY_RUN" != "1" ]; then
-        progress 'verifying wrapper'
         AGY_SKIP_AUTO_UPDATE=1 "$HOME/bin/agy" info >/dev/null
-        say 'ok; runtime repair: agy repair'
+        if [ "$AGY_SYNC_ONLY" != "1" ]; then
+            load_current_wrapper
+            say "wrapper installed $(rev "$CURRENT_WRAPPER_VERSION" "$CURRENT_WRAPPER_COMMIT")"
+            progress 'verifying wrapper'
+            AGY_SKIP_AUTO_UPDATE=1 "$HOME/bin/agy" info >/dev/null
+            say 'ok; runtime repair: agy repair'
+        else
+            say 'ok'
+        fi
     fi
     clear_progress
 }

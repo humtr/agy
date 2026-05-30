@@ -37,7 +37,7 @@ agy_build_launcher() {
 
 agy_source_commit() {
     if command -v git >/dev/null 2>&1 && git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        git -C "$ROOT_DIR" rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown\n'
+        git -C "$ROOT_DIR" rev-parse --short=6 HEAD 2>/dev/null || printf 'unknown\n'
     else
         printf 'unknown\n'
     fi
@@ -111,26 +111,10 @@ agy_reload_wrapper_version() {
         . "\$VERSION_FILE"
     fi
 }
-agy_wrapper_summary() {
-    label="\${1:-wrapper}"
-    agy_reload_wrapper_version
-    echo "agy: \$label wrapper:" >&2
-    echo "agy:   version: \${AGY_WRAPPER_VERSION:-unknown}" >&2
-    echo "agy:   commit: \${AGY_WRAPPER_COMMIT:-unknown}" >&2
-    echo "agy:   repo: \${AGY_WRAPPER_REPO:-humtr/agy}" >&2
-}
 agy_wrapper_info() {
     agy_reload_wrapper_version
-    printf 'agy wrapper: %s\n' "\${AGY_WRAPPER_VERSION:-unknown}"
-    printf 'wrapper channel: %s\n' "\${AGY_WRAPPER_CHANNEL:-unknown}"
-    printf 'wrapper commit: %s\n' "\${AGY_WRAPPER_COMMIT:-unknown}"
-    printf 'wrapper repo: %s\n' "\${AGY_WRAPPER_REPO:-humtr/agy}"
-    printf 'public command: %s\n' "$AGY_USER_WRAPPER"
-    printf 'runtime raw: %s\n' "$AGY_RAW"
-    printf 'runtime patched: %s\n' "$AGY_PATCHED"
-    printf 'runtime support: %s\n' "$AGY_RUNTIME_DIR"
-    printf 'state: %s\n' "$AGY_STATE_FILE"
-    printf 'upstream version command: agy version\n'
+    printf 'upstream  %s\n' "$(agy_current_version)"
+    printf 'wrapper   %s (%s)\n' "\${AGY_WRAPPER_VERSION:-unknown}" "\${AGY_WRAPPER_COMMIT:-unknown}"
 }
 agy_verify_current_entrypoint() {
     resolved=\$(command -v agy 2>/dev/null || true)
@@ -173,21 +157,10 @@ case "\${1:-}" in
         ;;
     sync)
         shift
-        echo "agy: syncing Termux wrapper from main..." >&2
-        agy_wrapper_summary "current"
+        AGY_MANAGED_MODE=sync
+        export AGY_MANAGED_MODE
         curl -fsSL https://raw.githubusercontent.com/humtr/agy/main/install.sh | bash
         rc=\$?
-        if [ "\$rc" -eq 0 ]; then
-            agy_wrapper_summary "installed"
-            if agy_verify_current_entrypoint; then
-                echo "agy: sync completed and verified." >&2
-            else
-                echo "agy: sync completed, but the current command resolution is stale." >&2
-                echo "agy: run now: hash -r" >&2
-            fi
-        else
-            echo "agy: sync failed with exit \$rc." >&2
-        fi
         exit "\$rc"
         ;;
 esac

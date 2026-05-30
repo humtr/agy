@@ -76,6 +76,7 @@ static struct route decide_route(int argc, char **argv) {
     if (streq(argv[1], "install")) return (struct route){ROUTE_MANAGED_SHELL, "termux-safe install route"};
     if (streq(argv[1], "repair")) return (struct route){ROUTE_MANAGED_SHELL, "offline repair route"};
     if (streq(argv[1], "sync")) return (struct route){ROUTE_MANAGED_SHELL, "wrapper sync route"};
+    if (streq(argv[1], "version")) return (struct route){ROUTE_UPSTREAM, "version passthrough"};
     if (streq(argv[1], "info")) return (struct route){ROUTE_MANAGED_SHELL, "wrapper info route"};
     return (struct route){ROUTE_UPSTREAM, "default passthrough"};
 }
