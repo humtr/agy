@@ -10,6 +10,9 @@ AGY_USE_CWD_SOURCE="${AGY_USE_CWD_SOURCE:-0}"
 AGY_REQUIRED_PACKAGES="${AGY_REQUIRED_PACKAGES:-git curl python tar patchelf coreutils ca-certificates proot}"
 AGY_GLIBC_REPO_PACKAGE="${AGY_GLIBC_REPO_PACKAGE:-glibc-repo}"
 AGY_GLIBC_PACKAGES="${AGY_GLIBC_PACKAGES:-glibc glibc-runner}"
+AGY_NATIVE_ROOT="${AGY_NATIVE_ROOT:-$HOME/.local/lib/agy/native}"
+AGY_RUNTIME_DIR="${AGY_RUNTIME_DIR:-$AGY_NATIVE_ROOT/runtime}"
+AGY_VERSION_FILE="${AGY_VERSION_FILE:-$AGY_RUNTIME_DIR/wrapper-version.env}"
 AGY_TEMP_REPO=""
 AGY_REPO_PATH=""
 export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
@@ -45,6 +48,21 @@ fail() {
 need_termux() {
     [ -n "${PREFIX:-}" ] || fail 'PREFIX is not set. Run this inside Termux.'
     [ -x "$PREFIX/bin/pkg" ] || fail 'Termux pkg command not found.'
+}
+
+wrapper_summary() {
+    local label="$1"
+    unset AGY_WRAPPER_VERSION AGY_WRAPPER_CHANNEL AGY_WRAPPER_COMMIT AGY_WRAPPER_REPO AGY_WRAPPER_INSTALLED_AT
+    if [ ! -f "$AGY_VERSION_FILE" ]; then
+        say "$label wrapper: not installed"
+        return 0
+    fi
+    # shellcheck disable=SC1090
+    . "$AGY_VERSION_FILE"
+    say "$label wrapper:"
+    say "  version: ${AGY_WRAPPER_VERSION:-unknown}"
+    say "  commit: ${AGY_WRAPPER_COMMIT:-unknown}"
+    say "  repo: ${AGY_WRAPPER_REPO:-humtr/agy}"
 }
 
 install_dependencies() {
@@ -126,11 +144,14 @@ main() {
     need_termux
     install_dependencies
     check_glibc
+    wrapper_summary current
     prepare_repo
     say "installing runtime from $AGY_REPO_PATH"
     run bash "$AGY_REPO_PATH/bin/install-runtime.sh" --install
+    wrapper_summary installed
     if [ "$AGY_INSTALL_DRY_RUN" != "1" ]; then
-        AGY_SKIP_AUTO_UPDATE=1 "$HOME/bin/agy" --version
+        AGY_SKIP_AUTO_UPDATE=1 "$HOME/bin/agy" info >/dev/null
+        say "verified wrapper command: $HOME/bin/agy"
     fi
 }
 
