@@ -34,6 +34,14 @@ agy_build_launcher() {
     clang -O2 -Wall -Wextra -o "$out" "$ROOT_DIR/tools/agy-launcher.c"
 }
 
+agy_source_commit() {
+    if command -v git >/dev/null 2>&1 && git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        git -C "$ROOT_DIR" rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown\n'
+    else
+        printf 'unknown\n'
+    fi
+}
+
 remove_legacy_control_shims() {
     local p
     for p in \
@@ -57,9 +65,31 @@ cat >"$AGY_RUNTIME_DIR/agy-shell-wrapper.sh" <<EOF
 set -euo pipefail
 unset LD_PRELOAD LD_LIBRARY_PATH
 LIB="$AGY_RUNTIME_DIR/lib.sh"
+VERSION_FILE="$AGY_RUNTIME_DIR/wrapper-version.env"
 # shellcheck disable=SC1091
 . "\$LIB"
+if [ -f "\$VERSION_FILE" ]; then
+    # shellcheck disable=SC1090
+    . "\$VERSION_FILE"
+fi
+agy_wrapper_info() {
+    printf 'agy wrapper: %s\n' "\${AGY_WRAPPER_VERSION:-unknown}"
+    printf 'wrapper channel: %s\n' "\${AGY_WRAPPER_CHANNEL:-unknown}"
+    printf 'wrapper commit: %s\n' "\${AGY_WRAPPER_COMMIT:-unknown}"
+    printf 'wrapper repo: %s\n' "\${AGY_WRAPPER_REPO:-humtr/agy}"
+    printf 'public command: %s\n' "$AGY_USER_WRAPPER"
+    printf 'runtime raw: %s\n' "$AGY_RAW"
+    printf 'runtime patched: %s\n' "$AGY_PATCHED"
+    printf 'runtime support: %s\n' "$AGY_RUNTIME_DIR"
+    printf 'state: %s\n' "$AGY_STATE_FILE"
+    printf 'upstream version command: agy version\n'
+}
 case "\${1:-}" in
+    info)
+        shift
+        agy_wrapper_info
+        exit \$?
+        ;;
     repair)
         shift
         echo "agy: starting offline repair..." >&2
@@ -139,6 +169,7 @@ migrate_legacy_raw() {
 }
 
 install_wrappers() {
+    local wrapper_commit
     mkdir -p "$(dirname "$AGY_USER_WRAPPER")" "$AGY_RUNTIME_DIR" "$AGY_STATE_DIR"
 
     cp "$ROOT_DIR/lib/agy-termux-lib.sh" "$AGY_RUNTIME_DIR/lib.sh"
@@ -147,6 +178,17 @@ install_wrappers() {
     chmod 755 "$AGY_RUNTIME_DIR/build-runtime.py"
     cp "$ROOT_DIR/config/verified-agy-version.env" "$AGY_RUNTIME_DIR/verified-agy-version.env"
     chmod 644 "$AGY_RUNTIME_DIR/verified-agy-version.env"
+    if [ -f "$ROOT_DIR/config/wrapper-version.env" ]; then
+        cp "$ROOT_DIR/config/wrapper-version.env" "$AGY_RUNTIME_DIR/wrapper-version.env"
+    else
+        printf 'AGY_WRAPPER_VERSION=unknown\nAGY_WRAPPER_CHANNEL=unknown\nAGY_WRAPPER_REPO=humtr/agy\n' >"$AGY_RUNTIME_DIR/wrapper-version.env"
+    fi
+    wrapper_commit="$(agy_source_commit)"
+    {
+        printf 'AGY_WRAPPER_COMMIT=%s\n' "$wrapper_commit"
+        printf 'AGY_WRAPPER_INSTALLED_AT=%s\n' "$(date -Is)"
+    } >>"$AGY_RUNTIME_DIR/wrapper-version.env"
+    chmod 644 "$AGY_RUNTIME_DIR/wrapper-version.env"
 
 cat >"$AGY_EXEC_WRAPPER" <<EOF
 #!$PREFIX/bin/bash
@@ -196,6 +238,7 @@ EOF
     echo "  $AGY_RUNTIME_DIR/lib.sh"
     echo "  $AGY_RUNTIME_DIR/build-runtime.py"
     echo "  $AGY_RUNTIME_DIR/verified-agy-version.env"
+    echo "  $AGY_RUNTIME_DIR/wrapper-version.env"
     echo "Installed shell fallback:"
     echo "  $AGY_RUNTIME_DIR/agy-shell-wrapper.sh"
     echo "Ensured startup PATH includes:"
