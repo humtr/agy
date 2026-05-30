@@ -68,11 +68,23 @@ LIB="$AGY_RUNTIME_DIR/lib.sh"
 VERSION_FILE="$AGY_RUNTIME_DIR/wrapper-version.env"
 # shellcheck disable=SC1091
 . "\$LIB"
-if [ -f "\$VERSION_FILE" ]; then
-    # shellcheck disable=SC1090
-    . "\$VERSION_FILE"
-fi
+agy_reload_wrapper_version() {
+    unset AGY_WRAPPER_VERSION AGY_WRAPPER_CHANNEL AGY_WRAPPER_COMMIT AGY_WRAPPER_REPO AGY_WRAPPER_INSTALLED_AT
+    if [ -f "\$VERSION_FILE" ]; then
+        # shellcheck disable=SC1090
+        . "\$VERSION_FILE"
+    fi
+}
+agy_wrapper_summary() {
+    label="\${1:-wrapper}"
+    agy_reload_wrapper_version
+    echo "agy: \$label wrapper:" >&2
+    echo "agy:   version: \${AGY_WRAPPER_VERSION:-unknown}" >&2
+    echo "agy:   commit: \${AGY_WRAPPER_COMMIT:-unknown}" >&2
+    echo "agy:   repo: \${AGY_WRAPPER_REPO:-humtr/agy}" >&2
+}
 agy_wrapper_info() {
+    agy_reload_wrapper_version
     printf 'agy wrapper: %s\n' "\${AGY_WRAPPER_VERSION:-unknown}"
     printf 'wrapper channel: %s\n' "\${AGY_WRAPPER_CHANNEL:-unknown}"
     printf 'wrapper commit: %s\n' "\${AGY_WRAPPER_COMMIT:-unknown}"
@@ -126,9 +138,11 @@ case "\${1:-}" in
     sync)
         shift
         echo "agy: syncing Termux wrapper from main..." >&2
+        agy_wrapper_summary "current"
         curl -fsSL https://raw.githubusercontent.com/humtr/agy/main/install.sh | bash
         rc=\$?
         if [ "\$rc" -eq 0 ]; then
+            agy_wrapper_summary "installed"
             if agy_verify_current_entrypoint; then
                 echo "agy: sync completed and verified." >&2
             else
