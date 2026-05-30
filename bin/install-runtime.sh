@@ -59,11 +59,18 @@ unset LD_PRELOAD LD_LIBRARY_PATH
 LIB="$AGY_RUNTIME_DIR/lib.sh"
 # shellcheck disable=SC1091
 . "\$LIB"
-if [ "\${1:-}" = "repair" ]; then
-    shift
-    agy_repair manual
-    exit \$?
-fi
+case "\${1:-}" in
+    repair)
+        shift
+        agy_repair manual
+        exit \$?
+        ;;
+    sync)
+        shift
+        curl -fsSL https://raw.githubusercontent.com/humtr/agy/main/install.sh | bash
+        exit \$?
+        ;;
+esac
 agy_main "\$@"
 EOF
     chmod 755 "$AGY_RUNTIME_DIR/agy-shell-wrapper.sh"
