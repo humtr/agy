@@ -17,15 +17,11 @@ AGY_VERSION_FILE="${AGY_VERSION_FILE:-$AGY_RUNTIME_DIR/wrapper-version.env}"
 AGY_REPO_PATH=""
 CURRENT_WRAPPER_VERSION="not-installed"
 CURRENT_WRAPPER_COMMIT="unknown"
-CURRENT_WRAPPER_REPO="humtr/agy"
 LATEST_WRAPPER_VERSION="unknown"
 LATEST_WRAPPER_COMMIT="unknown"
-LATEST_WRAPPER_REPO="humtr/agy"
 export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
 
-say() {
-    printf 'agy install: %s\n' "$*" >&2
-}
+say() { printf 'agy install: %s\n' "$*" >&2; }
 
 run() {
     if [ "$AGY_INSTALL_DRY_RUN" = "1" ]; then
@@ -35,9 +31,7 @@ run() {
     fi
 }
 
-pkg_update() {
-    run pkg update -y
-}
+pkg_update() { run pkg update -y; }
 
 pkg_install() {
     run apt-get install -y \
@@ -59,14 +53,12 @@ need_termux() {
 load_current_wrapper() {
     CURRENT_WRAPPER_VERSION="not-installed"
     CURRENT_WRAPPER_COMMIT="unknown"
-    CURRENT_WRAPPER_REPO="humtr/agy"
     unset AGY_WRAPPER_VERSION AGY_WRAPPER_CHANNEL AGY_WRAPPER_COMMIT AGY_WRAPPER_REPO AGY_WRAPPER_INSTALLED_AT
     if [ -f "$AGY_VERSION_FILE" ]; then
         # shellcheck disable=SC1090
         . "$AGY_VERSION_FILE"
         CURRENT_WRAPPER_VERSION="${AGY_WRAPPER_VERSION:-unknown}"
         CURRENT_WRAPPER_COMMIT="${AGY_WRAPPER_COMMIT:-unknown}"
-        CURRENT_WRAPPER_REPO="${AGY_WRAPPER_REPO:-humtr/agy}"
     fi
 }
 
@@ -74,105 +66,61 @@ load_latest_wrapper() {
     local latest_file="$AGY_REPO_PATH/config/wrapper-version.env"
     LATEST_WRAPPER_VERSION="unknown"
     LATEST_WRAPPER_COMMIT="unknown"
-    LATEST_WRAPPER_REPO="humtr/agy"
     unset AGY_WRAPPER_VERSION AGY_WRAPPER_CHANNEL AGY_WRAPPER_COMMIT AGY_WRAPPER_REPO AGY_WRAPPER_INSTALLED_AT
     if [ -f "$latest_file" ]; then
         # shellcheck disable=SC1090
         . "$latest_file"
         LATEST_WRAPPER_VERSION="${AGY_WRAPPER_VERSION:-unknown}"
-        LATEST_WRAPPER_REPO="${AGY_WRAPPER_REPO:-humtr/agy}"
     fi
     if command -v git >/dev/null 2>&1 && git -C "$AGY_REPO_PATH" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         LATEST_WRAPPER_COMMIT="$(git -C "$AGY_REPO_PATH" rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown')"
     fi
 }
 
-print_wrapper_revision() {
-    local label="$1" version="$2" commit="$3" repo="$4"
-    say "$label wrapper:"
-    say "  version: $version"
-    say "  commit: $commit"
-    say "  repo: $repo"
-}
-
-print_wrapper_comparison() {
-    print_wrapper_revision current "$CURRENT_WRAPPER_VERSION" "$CURRENT_WRAPPER_COMMIT" "$CURRENT_WRAPPER_REPO"
-    print_wrapper_revision latest "$LATEST_WRAPPER_VERSION" "$LATEST_WRAPPER_COMMIT" "$LATEST_WRAPPER_REPO"
-    if [ "$CURRENT_WRAPPER_VERSION" = "$LATEST_WRAPPER_VERSION" ] && [ "$CURRENT_WRAPPER_COMMIT" = "$LATEST_WRAPPER_COMMIT" ]; then
-        say "wrapper is already current; refreshing installed support files"
-    elif [ "$CURRENT_WRAPPER_VERSION" = "not-installed" ]; then
-        say "installing wrapper $LATEST_WRAPPER_VERSION ($LATEST_WRAPPER_COMMIT)"
-    else
-        say "updating wrapper $CURRENT_WRAPPER_VERSION ($CURRENT_WRAPPER_COMMIT) -> $LATEST_WRAPPER_VERSION ($LATEST_WRAPPER_COMMIT)"
-    fi
-}
-
-print_installed_wrapper() {
-    load_current_wrapper
-    print_wrapper_revision installed "$CURRENT_WRAPPER_VERSION" "$CURRENT_WRAPPER_COMMIT" "$CURRENT_WRAPPER_REPO"
-}
+rev() { printf '%s (%s)' "$1" "$2"; }
 
 install_dependencies() {
-    local missing=()
-    local package
+    local missing=() package
     for package in $AGY_REQUIRED_PACKAGES; do
         if ! dpkg -s "$package" >/dev/null 2>&1; then
             missing+=("$package")
         fi
     done
-
     if [ "${#missing[@]}" -eq 0 ]; then
-        say 'required Termux packages are present'
+        say 'dependencies ok'
         return 0
     fi
-
-    say "installing missing Termux packages: ${missing[*]}"
-    if ! pkg_install "${missing[@]}"; then
-        fail "dependency install failed. Retry manually: apt-get install -y ${missing[*]}"
-    fi
+    say "installing dependencies: ${missing[*]}"
+    pkg_install "${missing[@]}" || fail "dependency install failed. Retry manually: apt-get install -y ${missing[*]}"
 }
 
 check_glibc() {
     local loader="$PREFIX/glibc/lib/ld-linux-aarch64.so.1"
     local libc="$PREFIX/glibc/lib/libc.so.6"
     if [ -x "$loader" ] && [ -f "$libc" ]; then
-        say 'glibc runtime prerequisite is present'
+        say 'glibc ok'
         return 0
     fi
-
-    say "installing Termux glibc repository package: $AGY_GLIBC_REPO_PACKAGE"
-    if ! pkg_install "$AGY_GLIBC_REPO_PACKAGE"; then
-        fail "glibc repository install failed. Retry manually: apt-get install -y $AGY_GLIBC_REPO_PACKAGE"
-    fi
-
-    say 'refreshing package lists after enabling glibc repository'
-    if ! pkg_update; then
-        fail 'pkg update failed after enabling the glibc repository. Run termux-change-repo, then retry.'
-    fi
-
-    say "installing Termux glibc runtime packages: $AGY_GLIBC_PACKAGES"
-    if pkg_install $AGY_GLIBC_PACKAGES; then
-        if [ -x "$loader" ] && [ -f "$libc" ]; then
-            say 'glibc runtime prerequisite is present'
-            return 0
-        fi
-    fi
-    fail "Termux glibc runtime is missing. expected: $loader and $libc"
+    say 'installing glibc support'
+    pkg_install "$AGY_GLIBC_REPO_PACKAGE" || fail "glibc repository install failed. Retry manually: apt-get install -y $AGY_GLIBC_REPO_PACKAGE"
+    pkg_update || fail 'pkg update failed after enabling the glibc repository. Run termux-change-repo, then retry.'
+    pkg_install $AGY_GLIBC_PACKAGES || fail "Termux glibc runtime is missing. expected: $loader and $libc"
+    [ -x "$loader" ] && [ -f "$libc" ] || fail "Termux glibc runtime is missing. expected: $loader and $libc"
+    say 'glibc ok'
 }
 
 prepare_source_cache() {
     local cache_parent
     cache_parent="$(dirname "$AGY_SOURCE_CACHE")"
-    run mkdir -p "$cache_parent" || fail "failed to create source cache parent: $cache_parent"
-
+    run mkdir -p "$cache_parent" || fail 'failed to create source cache parent'
     if [ -d "$AGY_SOURCE_CACHE/.git" ]; then
-        say "refreshing source cache at $AGY_SOURCE_CACHE"
+        say 'source cache refreshing'
         run git -C "$AGY_SOURCE_CACHE" fetch --depth 1 origin "$AGY_BRANCH" || fail "failed to fetch $AGY_REPO_URL"
-        run git -C "$AGY_SOURCE_CACHE" checkout -B "$AGY_BRANCH" FETCH_HEAD || fail "failed to checkout $AGY_BRANCH"
+        run git -C "$AGY_SOURCE_CACHE" checkout -B "$AGY_BRANCH" FETCH_HEAD >/dev/null 2>&1 || fail "failed to checkout $AGY_BRANCH"
     elif [ -e "$AGY_SOURCE_CACHE" ]; then
         fail "source cache exists but is not a git repository: $AGY_SOURCE_CACHE"
     else
-        say "cloning source cache from $AGY_REPO_URL branch $AGY_BRANCH"
+        say 'source cache cloning'
         run git clone --depth 1 --branch "$AGY_BRANCH" "$AGY_REPO_URL" "$AGY_SOURCE_CACHE" || fail "failed to clone $AGY_REPO_URL"
     fi
     AGY_REPO_PATH="$AGY_SOURCE_CACHE"
@@ -181,20 +129,18 @@ prepare_source_cache() {
 prepare_repo() {
     if [ "$AGY_USE_CWD_SOURCE" = "1" ] && [ -f "./bin/install-runtime.sh" ] && [ -f "./lib/agy-termux-lib.sh" ]; then
         AGY_REPO_PATH=$(pwd)
-        say "using current working tree source: $AGY_REPO_PATH"
+        say 'source current-working-tree'
         return 0
     fi
-
     if [ "$AGY_KEEP_SOURCE" != "1" ]; then
         prepare_source_cache
         return 0
     fi
-
     if [ -d "$AGY_INSTALL_ROOT/.git" ]; then
-        say "updating repo at $AGY_INSTALL_ROOT"
+        say 'source repo refreshing'
         run git -C "$AGY_INSTALL_ROOT" fetch --prune origin || fail "failed to fetch $AGY_REPO_URL"
-        run git -C "$AGY_INSTALL_ROOT" checkout "$AGY_BRANCH" || fail "failed to checkout $AGY_BRANCH"
-        run git -C "$AGY_INSTALL_ROOT" pull --ff-only origin "$AGY_BRANCH" || fail "failed to fast-forward $AGY_INSTALL_ROOT"
+        run git -C "$AGY_INSTALL_ROOT" checkout "$AGY_BRANCH" >/dev/null 2>&1 || fail "failed to checkout $AGY_BRANCH"
+        run git -C "$AGY_INSTALL_ROOT" pull --ff-only origin "$AGY_BRANCH" >/dev/null || fail "failed to fast-forward $AGY_INSTALL_ROOT"
     else
         run mkdir -p "$(dirname "$AGY_INSTALL_ROOT")" || fail "failed to create $(dirname "$AGY_INSTALL_ROOT")"
         run git clone --branch "$AGY_BRANCH" "$AGY_REPO_URL" "$AGY_INSTALL_ROOT" || fail "failed to clone $AGY_REPO_URL"
@@ -209,13 +155,21 @@ main() {
     load_current_wrapper
     prepare_repo
     load_latest_wrapper
-    print_wrapper_comparison
-    say "installing runtime from $AGY_REPO_PATH"
+
+    if [ "$CURRENT_WRAPPER_VERSION" = "not-installed" ]; then
+        say "wrapper install -> $(rev "$LATEST_WRAPPER_VERSION" "$LATEST_WRAPPER_COMMIT")"
+    elif [ "$CURRENT_WRAPPER_VERSION" = "$LATEST_WRAPPER_VERSION" ] && [ "$CURRENT_WRAPPER_COMMIT" = "$LATEST_WRAPPER_COMMIT" ]; then
+        say "wrapper reinstall $(rev "$LATEST_WRAPPER_VERSION" "$LATEST_WRAPPER_COMMIT")"
+    else
+        say "wrapper update $(rev "$CURRENT_WRAPPER_VERSION" "$CURRENT_WRAPPER_COMMIT") -> $(rev "$LATEST_WRAPPER_VERSION" "$LATEST_WRAPPER_COMMIT")"
+    fi
+
     run bash "$AGY_REPO_PATH/bin/install-runtime.sh" --install
-    print_installed_wrapper
+    load_current_wrapper
+    say "wrapper installed $(rev "$CURRENT_WRAPPER_VERSION" "$CURRENT_WRAPPER_COMMIT")"
     if [ "$AGY_INSTALL_DRY_RUN" != "1" ]; then
         AGY_SKIP_AUTO_UPDATE=1 "$HOME/bin/agy" info >/dev/null
-        say "verified wrapper command: $HOME/bin/agy"
+        say 'verified; use agy repair for local runtime repair'
     fi
 }
 
