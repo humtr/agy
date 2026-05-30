@@ -1,30 +1,34 @@
-# 🚀 agy-termux
+# 🚀 agy native Termux runtime
 
-> Termux/Android 환경에서 Linux(glibc)용 Antigravity CLI(`agy`)를 안정적이고 네이티브에 준하는 속도로 구동하기 위한 이식 레이어입니다.
+> Termux/Android 환경에서 Linux(glibc)용 Antigravity CLI(`agy`)를 `agy` 단일 명령 표면으로 구동하기 위한 네이티브 런타임 이식 레이어입니다.
 
 ---
 
 ## 📦 기본 구조 및 아키텍처
 
-`agy-termux`는 안드로이드의 `Bionic` 환경과 리눅스의 `glibc` 환경을 네이티브 링커 패치 기법을 통해 매끄럽게 연결합니다.
+이 프로젝트는 안드로이드의 `Bionic` 환경과 리눅스의 `glibc` 환경을 네이티브 링커 패치 기법으로 연결합니다. 사용자가 직접 사용하는 공개 명령은 `agy` 하나입니다.
 
 ```text
-~/.local/bin/agy                   # [불변 원본] Upstream 공식 바이너리
-~/.local/lib/agy-termux/agy        # [패치 런타임] resolv.conf 경로를 fd/33으로 조정한 바이너리
-~/bin/agy (및 $PREFIX/bin/agy)    # [컴파일 런처] 최초 진입 및 환경 제어를 관리하는 Bionic ELF 런처
-~/bin/agy-termux                   # [제어 평면] 진단, 롤백, 수동 패치용 컨트롤러
+~/.local/lib/agy/native/raw/agy        # [불변 원본] Upstream 공식 Linux ARM64 바이너리
+~/.local/lib/agy/native/runtime/agy    # [패치 런타임] fd 33 resolver 경로로 조정한 바이너리
+~/bin/agy                              # [공개 진입점] Bionic ELF launcher 또는 shell fallback
+~/.local/bin/agy                       # [호환 shim] ~/bin/agy로 위임
+$PREFIX/bin/agy                        # [PATH shim] ~/bin/agy로 위임
 ```
 
 ### ⚙️ 핵심 원칙
+
+- **단일 사용자 표면**: 정상 사용, 업데이트, 로컬 복구는 모두 `agy` 명령으로 진입합니다.
 - **네이티브 실행 체인**: `Compiled Launcher ➔ FD 33 Resolver ➔ Glibc Loader ➔ Patched Runtime` 구조로 부하를 최소화합니다.
-- **안전한 샌드박싱**: 자식 Bionic 프로세스의 링커 오염을 완방하기 위해 실행 직전 `LD_PRELOAD`, `LD_LIBRARY_PATH`를 완전히 제거합니다.
-- **업데이트 격리**: `agy update` 등 자체 바이너리 변경 명령을 Termux 전용 트랜잭션 검증 파이프라인으로 안전하게 라우팅합니다.
+- **안전한 샌드박싱**: 자식 Bionic 프로세스의 링커 오염을 막기 위해 실행 직전 `LD_PRELOAD`, `LD_LIBRARY_PATH`를 제거합니다.
+- **업데이트 격리**: `agy update` 등 자체 바이너리 변경 명령을 Termux 전용 트랜잭션 검증 파이프라인으로 라우팅합니다.
+- **관리 표면 제거**: `agy-t`, `agy-termux` 같은 별도 공개 제어 명령은 설치하지 않습니다.
 
 ---
 
-## ⚡ 빠른 설치 (One-Line)
+## ⚡ 빠른 설치 / 복구
 
-Termux 터미널에서 다음 명령을 실행하여 부트스트랩을 즉시 진행합니다.
+Termux 터미널에서 다음 명령을 실행합니다. 같은 명령은 재실행해도 되며, 설치된 wrapper/runtime 지원 파일을 복구하는 idempotent bootstrap 역할을 합니다.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/humtr/agy/main/install.sh | bash
@@ -32,32 +36,29 @@ curl -fsSL https://raw.githubusercontent.com/humtr/agy/main/install.sh | bash
 
 ---
 
-## 🛠️ 제어 평면 운영 명령어 (`agy-termux`)
+## 🛠️ 사용자 명령
 
-운영 및 트러블슈팅을 지원하는 핵심 도구 세트입니다.
+| 명령어 | 역할 |
+| :--- | :--- |
+| `agy` | Antigravity CLI 일반 실행 |
+| `agy update` | 업스트림 manifest 확인, checksum 검증, raw→patched 후보 빌드, smoke test 후 교체 |
+| `agy repair` | 네트워크 없이 기존 raw 바이너리에서 patched runtime을 재빌드하는 로컬 복구 |
+| `agy --version` | 설치된 runtime 버전 확인 |
 
-| 명령어 | 역할 | 비고 |
-| :--- | :--- | :--- |
-| `agy-termux status` | 현재 raw/patched 상태 및 해시 검증 | 무중단 링커 감시 |
-| `agy-termux doctor` | 셸 환경 링커 오염(parent LD) 및 리졸버 검사 | 자가 진단 |
-| `agy-termux repair` | raw 바이너리로부터 복사본 재빌드 및 재패치 수행 | 강제 복구 |
-| `agy-termux update` | 업스트림 매네페스트 체크 및 트랜잭션 기반 교체 | `--dry-run` 지원 |
-| `agy-termux rollback` | 직전 빌드로 안전하게 회귀 | `--dry-run` 지원 |
-| `agy-termux test-native` | 네이티브 fd 33 리졸버 DNS 연동 연기 테스트 | 45초 타임아웃 |
-| `agy-termux test-proot` | diagnostic 전용 proot 백업 동작 여부 확인 | 폴백 검증 |
+`agy repair`는 OAuth 세션이나 사용자 토큰을 건드리지 않습니다. raw 공식 바이너리가 없거나 glibc/CA/resolver 전제 조건이 깨진 경우에는 위 bootstrap 명령을 다시 실행하세요.
 
 ---
 
 ## 🛡️ 폴백 및 안전 장치
 
-- **자동 셸 래퍼 복구**: 컴파일된 런처가 초기 디스패치나 fd33 바인딩 단계에서 비정상 종료되는 경우, `~/.local/lib/agy-termux/agy-shell-wrapper.sh`로 자동 백업 기동합니다.
-- **인증 무보존 원칙**: 자가 치료나 수동 복구(`repair`), 업데이트 시 사용자의 OAuth 세션 및 토큰 파일(`~/.config` 내)은 절대 보존하며 훼손하지 않습니다.
+- **자동 셸 fallback**: compiled launcher가 초기 dispatch, fd33 바인딩, loader exec 단계에서 실패하면 `~/.local/lib/agy/native/runtime/agy-shell-wrapper.sh`로 복구 경로를 시도합니다.
+- **오프라인 repair**: `agy repair`는 네트워크 없이 기존 raw 바이너리에서 runtime copy를 다시 생성합니다.
+- **인증 무보존 원칙**: 설치, 복구, 업데이트는 사용자의 OAuth 세션 및 토큰 파일(`~/.config` 내)을 삭제하거나 재로그인하지 않습니다.
+- **진단 산출물 최소화**: 실패 시 진단 case는 로컬 상태 확인용으로만 생성되며, 자동으로 외부 LLM 도구에 전송하지 않습니다.
 
 ---
 
 ## 📚 관련 문서
-
-자세한 내부 구현 사양이나 원리는 아래 링크들을 참조해 주시기 바랍니다.
 
 - 📖 [호환성 결정 이력 및 설계 원칙](docs/COMPATIBILITY_DECISIONS.md)
 - 📖 [네이티브 이식 아키텍처 및 런타임 가이드](docs/AGY_TERMUX_NATIVE_GUIDE.md)
