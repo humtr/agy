@@ -4,6 +4,7 @@ set -euo pipefail
 AGY_REPO_URL="${AGY_REPO_URL:-https://github.com/humtr/agy.git}"
 AGY_BRANCH="${AGY_BRANCH:-main}"
 AGY_INSTALL_ROOT="${AGY_INSTALL_ROOT:-$HOME/prj/agy}"
+AGY_SOURCE_CACHE="${AGY_SOURCE_CACHE:-$HOME/.local/share/agy/native/source/main}"
 AGY_INSTALL_DRY_RUN="${AGY_INSTALL_DRY_RUN:-0}"
 AGY_KEEP_SOURCE="${AGY_KEEP_SOURCE:-0}"
 AGY_USE_CWD_SOURCE="${AGY_USE_CWD_SOURCE:-0}"
@@ -13,7 +14,6 @@ AGY_GLIBC_PACKAGES="${AGY_GLIBC_PACKAGES:-glibc glibc-runner}"
 AGY_NATIVE_ROOT="${AGY_NATIVE_ROOT:-$HOME/.local/lib/agy/native}"
 AGY_RUNTIME_DIR="${AGY_RUNTIME_DIR:-$AGY_NATIVE_ROOT/runtime}"
 AGY_VERSION_FILE="${AGY_VERSION_FILE:-$AGY_RUNTIME_DIR/wrapper-version.env}"
-AGY_TEMP_REPO=""
 AGY_REPO_PATH=""
 export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
 
@@ -113,6 +113,24 @@ check_glibc() {
     fail "Termux glibc runtime is missing. expected: $loader and $libc"
 }
 
+prepare_source_cache() {
+    local cache_parent
+    cache_parent="$(dirname "$AGY_SOURCE_CACHE")"
+    run mkdir -p "$cache_parent" || fail "failed to create source cache parent: $cache_parent"
+
+    if [ -d "$AGY_SOURCE_CACHE/.git" ]; then
+        say "refreshing source cache at $AGY_SOURCE_CACHE"
+        run git -C "$AGY_SOURCE_CACHE" fetch --depth 1 origin "$AGY_BRANCH" || fail "failed to fetch $AGY_REPO_URL"
+        run git -C "$AGY_SOURCE_CACHE" checkout -B "$AGY_BRANCH" FETCH_HEAD || fail "failed to checkout $AGY_BRANCH"
+    elif [ -e "$AGY_SOURCE_CACHE" ]; then
+        fail "source cache exists but is not a git repository: $AGY_SOURCE_CACHE"
+    else
+        say "cloning source cache from $AGY_REPO_URL branch $AGY_BRANCH"
+        run git clone --depth 1 --branch "$AGY_BRANCH" "$AGY_REPO_URL" "$AGY_SOURCE_CACHE" || fail "failed to clone $AGY_REPO_URL"
+    fi
+    AGY_REPO_PATH="$AGY_SOURCE_CACHE"
+}
+
 prepare_repo() {
     if [ "$AGY_USE_CWD_SOURCE" = "1" ] && [ -f "./bin/install-runtime.sh" ] && [ -f "./lib/agy-termux-lib.sh" ]; then
         AGY_REPO_PATH=$(pwd)
@@ -121,10 +139,7 @@ prepare_repo() {
     fi
 
     if [ "$AGY_KEEP_SOURCE" != "1" ]; then
-        AGY_TEMP_REPO=$(mktemp -d "${TMPDIR:-/tmp}/agy-install.XXXXXX") || fail 'failed to create temporary source directory'
-        say "cloning temporary source from $AGY_REPO_URL branch $AGY_BRANCH"
-        run git clone --depth 1 --branch "$AGY_BRANCH" "$AGY_REPO_URL" "$AGY_TEMP_REPO" || fail "failed to clone $AGY_REPO_URL"
-        AGY_REPO_PATH="$AGY_TEMP_REPO"
+        prepare_source_cache
         return 0
     fi
 
