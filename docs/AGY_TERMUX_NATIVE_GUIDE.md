@@ -1,7 +1,11 @@
-# Antigravity CLI (`agy`) Compiled Launcher Guide
+# Antigravity CLI (`agy`) Native Termux Guide
 
 This project is a Termux-specific launcher and runtime-build workflow for
 running the official Linux ARM64 Antigravity CLI (`agy`) on Android/Termux.
+
+The public user surface is intentionally limited to `agy`. Do not introduce a
+separate public maintenance command unless `agy` itself cannot reach the local
+shell fallback.
 
 The current environment already completed `agy auth login`. Do not rerun auth
 login as part of wrapper repair.
@@ -11,29 +15,30 @@ login as part of wrapper repair.
 The maintained layout is:
 
 ```text
-~/.local/bin/agy
+~/.local/lib/agy/native/raw/agy
   Raw official agy binary. Preserve it and never patch it in place.
 
-~/.local/lib/agy-termux/agy
+~/.local/lib/agy/native/runtime/agy
   Patched runtime copy generated from the raw binary.
 
 ~/bin/agy
-  Compiled launcher (Termux/Bionic executable). This is the public runtime
-  entrypoint and mediates command routing.
+  Compiled launcher (Termux/Bionic executable) or shell fallback. This is the
+  public runtime entrypoint and mediates command routing.
 
-~/bin/agy-termux
-  Independent control plane command for status/doctor/update/repair/rollback.
+~/.local/bin/agy
+$PREFIX/bin/agy
+  Small shims that exec ~/bin/agy.
 
-~/.local/lib/agy-termux/lib.sh
-~/.local/lib/agy-termux/build-runtime.py
-~/.local/lib/agy-termux/agy-termux-control.sh
-  Installed support files used by control-plane operations.
+~/.local/lib/agy/native/runtime/lib.sh
+~/.local/lib/agy/native/runtime/build-runtime.py
+~/.local/lib/agy/native/runtime/verified-agy-version.env
+  Installed support files used by the launcher, update broker, and local repair.
 
-~/.local/share/agy-termux/state.env
+~/.local/share/agy/native/state.json
   Hash/state file recording which raw binary produced the runtime copy.
 
-~/.local/share/agy-termux/doctor/
-  Diagnostic case directory for non-auth troubleshooting.
+~/.local/share/agy/native/doctor/
+  Local diagnostic case directory for non-auth troubleshooting.
 ```
 
 The normal command is:
@@ -42,13 +47,7 @@ The normal command is:
 agy ...
 ```
 
-The management command is:
-
-```bash
-agy-termux ...
-```
-
-`agy-termux` is the primary control-plane command.
+There is no public `agy-t` or `agy-termux` control command.
 
 ## Reliability Model
 
@@ -62,19 +61,31 @@ Command policy:
 
 - bare `agy`: light preflight + update check
 - `agy update|upgrade|self-update`: full preflight + full update pipeline
+- `agy repair`: offline local repair from the existing raw binary
 - `agy --print`, `-p`, `--prompt`, `--print-timeout`: cheap guard only
 - `agy --help`, `-h`, `help`: fast path, no update output mixing
 - `agy plugin|plugins|changelog` and automation-style flags: cheap guard only
-- `agy install`: control-plane managed path
+- `agy install`: managed install/config path
 
 Normal runtime commands stay on compiled-launcher mediation and passthrough to
 patched runtime without heavy per-run lifecycle work.
 
-## Updating Agy
+## Updating And Repairing Agy
 
 `agy update` (and aliases `upgrade`, `self-update`) is the only full lifecycle
 update entrypoint. It performs manifest check, checksum verification, candidate
 build, validation, lock-held atomic promotion, and state update.
+
+`agy repair` is the local offline repair entrypoint. It does not contact the
+network. It rebuilds the patched runtime copy from the existing raw official
+binary, validates the candidate with `--version`, and records state.
+
+If the raw official binary or Termux glibc prerequisites are missing, rerun the
+bootstrap installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/humtr/agy/main/install.sh | bash
+```
 
 Normal commands do not run full hash verification/smoke/repair loops on every
 invocation. Postflight strengthening is reserved for actual promotion/update
@@ -127,27 +138,24 @@ Normal `agy` failures create a diagnostic case unless the exit code is `0` or
 Case layout:
 
 ```text
-~/.local/share/agy-termux/doctor/YYYYMMDD-HHMMSS/
+~/.local/share/agy/native/doctor/YYYYMMDD-HHMMSS/
   raw.log
   safe.log
   env.log
   repair_prompt.txt
 ```
 
-The wrapper does not auto-call Gemini or Codex. Use `agy-termux doctor` to
-inspect runtime state first. If redaction looks
-uncertain, inspect the prompt path manually and do not send it.
-
-Redaction is best-effort. It targets bearer headers, cookies, OAuth token/query
-fields, callback URLs containing code/token/state, and known fake test markers.
-It is not a proof that arbitrary logs are secret-free.
+The wrapper does not auto-call Gemini, Codex, or any other LLM. Redaction is
+best-effort. It targets bearer headers, cookies, OAuth token/query fields,
+callback URLs containing code/token/state, and known fake test markers. It is not
+a proof that arbitrary logs are secret-free.
 
 ## Compatibility Decisions
 
 See `docs/COMPATIBILITY_DECISIONS.md` for the maintained compatibility record.
 The required runtime decisions are the static VA39 patch, the `faccessat2`
-compatibility patch, strict native fd33 resolver path, and loader-scoped
-glibc library paths.
+compatibility patch, strict native fd33 resolver path, and loader-scoped glibc
+library paths.
 
 `agy` is a mediated launcher. Lifecycle commands like `update`, `upgrade`, and
 `self-update` are intercepted and routed to the Termux pipeline instead of the
@@ -156,18 +164,18 @@ upstream runtime self-update path.
 Other subcommands default to upstream passthrough. Unknown subcommands are not
 blocked by launcher allowlists.
 
-Direct execution of `~/.local/lib/agy-termux/agy` is unsupported. The patched
-runtime expects fd 33 resolver wiring from the launcher.
+Direct execution of `~/.local/lib/agy/native/runtime/agy` is unsupported. The
+patched runtime expects fd 33 resolver wiring from the launcher.
 
 `tcmalloc_fix.so` is not part of the active runtime or active source tree. The
 wrapper does not set `LD_PRELOAD` for it. If future crash evidence justifies
 re-testing that idea, recover the old shim from Git history and use a separate
 diagnostic branch.
 
-## Setup And Repair
+## Setup
 
-`main` branch is the canonical runtime source and includes the one-line
-bootstrap script at `install.sh`.
+`main` branch is the canonical runtime source and includes the one-line bootstrap
+script at `install.sh`.
 
 Fresh install after cloning the repository:
 
@@ -189,47 +197,25 @@ pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/humtr/agy/ma
 ```
 
 This installs `~/bin/agy`, `$PREFIX/bin/agy`, and
-`~/.local/lib/agy-termux/run`, downloads the current raw Linux ARM64 `agy`
-tarball through the wrapper-managed broker, verifies its `sha512`, and builds
-`~/.local/lib/agy-termux/agy`.
+`~/.local/lib/agy/native/runtime/run`, downloads the current raw Linux ARM64
+`agy` tarball through the wrapper-managed broker, verifies its `sha512`, and
+builds `~/.local/lib/agy/native/runtime/agy`.
+
 The generated wrappers source the installed support library at
-`~/.local/lib/agy-termux/lib.sh`, not the cloned repository. The repository is
-the install/update source; the installed files are the runtime source. Preflight
-does not compare against the repository on every invocation.
+`~/.local/lib/agy/native/runtime/lib.sh`, not the cloned repository. The
+repository is the install/update source; the installed files are the runtime
+source. Preflight does not compare against the repository on every invocation.
 
 `$PREFIX/bin/agy` is a small managed shim that execs `~/bin/agy`. `$PREFIX/bin`
 is always on Termux PATH, so `agy` should resolve even if a shell does not read
-`~/.profile`, `~/.bashrc`, or `~/.zshrc`.
+`~/.profile`, `.bashrc`, or `.zshrc`.
 
-Status:
+Development status and repair commands remain available from a cloned repository:
 
 ```bash
 bash bin/install-runtime.sh --status
-```
-
-Install wrappers:
-
-```bash
-bash bin/install-runtime.sh --install-wrappers
-```
-
-This only installs wrappers and does not download or repair binaries.
-
-Rebuild runtime copy:
-
-```bash
 bash bin/install-runtime.sh --repair
 ```
-
-Update raw agy through the wrapper-managed broker:
-
-```bash
-agy update
-```
-
-The update broker reads the official manifest, verifies the tarball `sha512`,
-replaces only the raw `~/.local/bin/agy`, then rebuilds the runtime copy. It does not
-run auth login.
 
 ## What This Does Not Promise
 
