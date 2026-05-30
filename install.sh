@@ -6,19 +6,13 @@ AGY_BRANCH="${AGY_BRANCH:-main}"
 AGY_INSTALL_ROOT="${AGY_INSTALL_ROOT:-$HOME/prj/agy}"
 AGY_INSTALL_DRY_RUN="${AGY_INSTALL_DRY_RUN:-0}"
 AGY_KEEP_SOURCE="${AGY_KEEP_SOURCE:-0}"
+AGY_USE_CWD_SOURCE="${AGY_USE_CWD_SOURCE:-0}"
 AGY_REQUIRED_PACKAGES="${AGY_REQUIRED_PACKAGES:-git curl python tar patchelf coreutils ca-certificates proot}"
 AGY_GLIBC_REPO_PACKAGE="${AGY_GLIBC_REPO_PACKAGE:-glibc-repo}"
 AGY_GLIBC_PACKAGES="${AGY_GLIBC_PACKAGES:-glibc glibc-runner}"
 AGY_TEMP_REPO=""
 AGY_REPO_PATH=""
 export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
-
-cleanup() {
-    if [ -n "$AGY_TEMP_REPO" ]; then
-        rm -rf "$AGY_TEMP_REPO"
-    fi
-}
-trap cleanup EXIT
 
 say() {
     printf 'agy install: %s\n' "$*" >&2
@@ -102,14 +96,15 @@ check_glibc() {
 }
 
 prepare_repo() {
-    if [ -f "./bin/install-runtime.sh" ] && [ -f "./lib/agy-termux-lib.sh" ]; then
+    if [ "$AGY_USE_CWD_SOURCE" = "1" ] && [ -f "./bin/install-runtime.sh" ] && [ -f "./lib/agy-termux-lib.sh" ]; then
         AGY_REPO_PATH=$(pwd)
+        say "using current working tree source: $AGY_REPO_PATH"
         return 0
     fi
 
     if [ "$AGY_KEEP_SOURCE" != "1" ]; then
         AGY_TEMP_REPO=$(mktemp -d "${TMPDIR:-/tmp}/agy-install.XXXXXX") || fail 'failed to create temporary source directory'
-        say "cloning temporary source"
+        say "cloning temporary source from $AGY_REPO_URL branch $AGY_BRANCH"
         run git clone --depth 1 --branch "$AGY_BRANCH" "$AGY_REPO_URL" "$AGY_TEMP_REPO" || fail "failed to clone $AGY_REPO_URL"
         AGY_REPO_PATH="$AGY_TEMP_REPO"
         return 0
@@ -132,6 +127,7 @@ main() {
     install_dependencies
     check_glibc
     prepare_repo
+    say "installing runtime from $AGY_REPO_PATH"
     run bash "$AGY_REPO_PATH/bin/install-runtime.sh" --install
     if [ "$AGY_INSTALL_DRY_RUN" != "1" ]; then
         AGY_SKIP_AUTO_UPDATE=1 "$HOME/bin/agy" --version
