@@ -207,7 +207,9 @@ int main(int argc, char **argv) {
     exec_argv[1] = "--library-path";
     exec_argv[2] = lib_path;
     exec_argv[3] = (char *)runtime_path;
-    for (i = 1; i < argc; i++) exec_argv[i + 3] = argv[i];
+    for (i = 1; i < argc; i++) {
+        exec_argv[i + 3] = (i == 1 && streq(argv[i], "version")) ? "--version" : argv[i];
+    }
     exec_argv[argc + 3] = NULL;
 
     execv(loader_path, exec_argv);
