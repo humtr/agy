@@ -908,11 +908,20 @@ PY
 }
 
 agy_remove_legacy_control_shims() {
-    agy_remove_path "$AGY_HOME/.local/bin/agy-t"
-    agy_remove_path "$AGY_HOME/bin/agy-t"
-    agy_remove_path "$AGY_HOME/bin/agy-termux"
-    agy_remove_path "$AGY_PREFIX/bin/agy-t"
-    agy_remove_path "$AGY_PREFIX/bin/agy-termux"
+    local path
+    for path in \
+        "$AGY_HOME/.local/bin/agy-t" \
+        "$AGY_HOME/bin/agy-t" \
+        "$AGY_HOME/bin/agy-termux" \
+        "$AGY_PREFIX/bin/agy-t" \
+        "$AGY_PREFIX/bin/agy-termux"; do
+        if [ -L "$path" ] || [ -f "$path" ]; then
+            rm -f "$path"
+            printf 'removed %s\n' "$path"
+        elif [ -d "$path" ]; then
+            printf 'skipped legacy shim directory %s\n' "$path"
+        fi
+    done
 }
 
 agy_uninstall() {
