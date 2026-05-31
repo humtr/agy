@@ -75,6 +75,8 @@ static struct route decide_route(int argc, char **argv) {
     if (is_lifecycle(argv[1])) return (struct route){ROUTE_UPDATE, "reserved binary update command"};
     if (streq(argv[1], "install")) return (struct route){ROUTE_MANAGED_SHELL, "termux-safe install route"};
     if (streq(argv[1], "repair")) return (struct route){ROUTE_MANAGED_SHELL, "offline repair route"};
+    if (streq(argv[1], "uninstall")) return (struct route){ROUTE_MANAGED_SHELL, "managed uninstall route"};
+    if (streq(argv[1], "doctor")) return (struct route){ROUTE_MANAGED_SHELL, "diagnostic route"};
     if (streq(argv[1], "sync")) return (struct route){ROUTE_MANAGED_SHELL, "wrapper sync route"};
     if (streq(argv[1], "version")) return (struct route){ROUTE_UPSTREAM, "version passthrough"};
     if (streq(argv[1], "info")) return (struct route){ROUTE_MANAGED_SHELL, "wrapper info route"};
@@ -168,6 +170,8 @@ int main(int argc, char **argv) {
         else if (is_lifecycle(argv[1])) mode = "update";
         else if (streq(argv[1], "install")) mode = "install";
         else if (streq(argv[1], "repair")) mode = "repair";
+        else if (streq(argv[1], "uninstall")) mode = "uninstall";
+        else if (streq(argv[1], "doctor")) mode = "doctor";
         else if (streq(argv[1], "sync")) mode = "sync";
         else if (streq(argv[1], "info")) mode = "info";
         if (exec_managed_shell(bash_path, shell_fallback, argc, argv, mode) < 0) {

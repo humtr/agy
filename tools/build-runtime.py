@@ -145,8 +145,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "input",
         nargs="?",
-        default=str(Path.home() / ".local/bin/agy"),
-        help="official raw agy binary",
+        default=str(Path.home() / ".local/lib/agy/native/raw/agy"),
+        help="official raw agy binary; defaults to the managed raw cache",
     )
     parser.add_argument(
         "--output",
@@ -385,7 +385,11 @@ def report_to_dict(report: BuildReport) -> dict:
 def main() -> int:
     args = parse_args()
     src = Path(args.input).expanduser()
-    dst = Path(args.output).expanduser() if args.output else Path(str(src) + ".runtime")
+    dst = (
+        Path(args.output).expanduser()
+        if args.output
+        else Path.home() / ".local/lib/agy/native/runtime/agy"
+    )
 
     try:
         print(f"input          : {src}")
