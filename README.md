@@ -25,7 +25,7 @@ usable.
 | `agy update` | Update the official upstream `agy` binary only, then print `agy :` / `wrapper :` version rows. |
 | `agy doctor` | Check PATH, launcher, raw/runtime, loader, resolver, CA, and state. |
 | `agy version` | Print `agy :` and `wrapper :` version rows. |
-| `agy remove --yes` | Remove the managed launcher, runtime, raw copy, state, and obsolete shims. |
+| `agy remove` | Remove the managed launcher, runtime, raw copy, state, and obsolete shims. |
 
 ## Files
 
@@ -44,8 +44,8 @@ $PREFIX/bin/agy
 
 - The raw official binary is never patched in place.
 - The managed launcher lives at `$PREFIX/bin/agy`; no extra PATH shim is created.
-- No repo-pinned verified version file is shipped. Verified version state is
-  recorded locally after successful runs.
+- No repo-pinned verified version file is shipped. The last successful bare
+  `agy` runtime tuple is recorded locally after a normal exit.
 - `agy update` is the only upstream binary update path.
 - `agy setup` is the recovery path for launcher/support refresh and runtime
   re-ensuring.
@@ -55,7 +55,7 @@ $PREFIX/bin/agy
 1. Run `agy doctor`.
 2. If launcher/support files are stale or missing, run `agy setup`.
 3. If the upstream binary itself needs updating, run `agy update`.
-4. If removing, use `agy remove --yes`.
+4. If removing, use `agy remove`.
 
 ## Guides
 

@@ -204,7 +204,7 @@ agy_setup() {
 }
 
 agy_do_remove() {
-    agy_remove --yes
+    agy_remove_run
 }
 
 case "${1:-setup}" in

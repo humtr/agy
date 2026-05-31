@@ -53,6 +53,12 @@ agy_state_defaults() {
     LAST_REPAIR_AT=""
     LAST_SELF_UPDATE_AT=""
     VERIFIED_VERSION=""
+    VERIFIED_WRAPPER_VERSION=""
+    VERIFIED_WRAPPER_COMMIT=""
+    VERIFIED_RAW_SHA256=""
+    VERIFIED_PATCHED_SHA256=""
+    VERIFIED_AT=""
+    VERIFIED_ENTRYPOINT=""
     LAST_SEEN_UPSTREAM_VERSION=""
     LAST_FAILED_UPDATE_VERSION=""
     LAST_FAILED_UPDATE_STATUS=""
@@ -63,7 +69,7 @@ agy_state_defaults() {
 agy_safe_state_kv() {
     local key="$1" val="$2"
     case "$key" in
-        PATCHED_FROM_ORIGINAL_SHA256|PATCHED_SHA256|LAST_RAW_SHA256|LAST_REPAIR_AT|LAST_SELF_UPDATE_AT|VERIFIED_VERSION|LAST_SEEN_UPSTREAM_VERSION|LAST_FAILED_UPDATE_VERSION|LAST_FAILED_UPDATE_STATUS|LAST_FAILED_UPDATE_AT|LAST_FAILED_UPDATE_CASE|NEEDS_REPATCH) ;;
+        PATCHED_FROM_ORIGINAL_SHA256|PATCHED_SHA256|LAST_RAW_SHA256|LAST_REPAIR_AT|LAST_SELF_UPDATE_AT|VERIFIED_VERSION|VERIFIED_WRAPPER_VERSION|VERIFIED_WRAPPER_COMMIT|VERIFIED_RAW_SHA256|VERIFIED_PATCHED_SHA256|VERIFIED_AT|VERIFIED_ENTRYPOINT|LAST_SEEN_UPSTREAM_VERSION|LAST_FAILED_UPDATE_VERSION|LAST_FAILED_UPDATE_STATUS|LAST_FAILED_UPDATE_AT|LAST_FAILED_UPDATE_CASE|NEEDS_REPATCH) ;;
         *) return 1 ;;
     esac
     case "$val" in
@@ -83,7 +89,9 @@ if not p.exists():
 d=json.loads(p.read_text())
 keys=[
  "PATCHED_FROM_ORIGINAL_SHA256","PATCHED_SHA256","LAST_RAW_SHA256","LAST_REPAIR_AT",
- "LAST_SELF_UPDATE_AT","VERIFIED_VERSION","LAST_SEEN_UPSTREAM_VERSION",
+ "LAST_SELF_UPDATE_AT","VERIFIED_VERSION","VERIFIED_WRAPPER_VERSION",
+ "VERIFIED_WRAPPER_COMMIT","VERIFIED_RAW_SHA256","VERIFIED_PATCHED_SHA256",
+ "VERIFIED_AT","VERIFIED_ENTRYPOINT","LAST_SEEN_UPSTREAM_VERSION",
  "LAST_FAILED_UPDATE_VERSION","LAST_FAILED_UPDATE_STATUS","LAST_FAILED_UPDATE_AT",
  "LAST_FAILED_UPDATE_CASE","NEEDS_REPATCH"]
 for k in keys:
@@ -109,6 +117,12 @@ agy_state_write_json() {
         "$LAST_REPAIR_AT" \
         "$LAST_SELF_UPDATE_AT" \
         "$VERIFIED_VERSION" \
+        "$VERIFIED_WRAPPER_VERSION" \
+        "$VERIFIED_WRAPPER_COMMIT" \
+        "$VERIFIED_RAW_SHA256" \
+        "$VERIFIED_PATCHED_SHA256" \
+        "$VERIFIED_AT" \
+        "$VERIFIED_ENTRYPOINT" \
         "$LAST_SEEN_UPSTREAM_VERSION" \
         "$LAST_FAILED_UPDATE_VERSION" \
         "$LAST_FAILED_UPDATE_STATUS" \
@@ -125,11 +139,17 @@ state={
  "LAST_REPAIR_AT":sys.argv[6],
  "LAST_SELF_UPDATE_AT":sys.argv[7],
  "VERIFIED_VERSION":sys.argv[8],
- "LAST_SEEN_UPSTREAM_VERSION":sys.argv[9],
- "LAST_FAILED_UPDATE_VERSION":sys.argv[10],
- "LAST_FAILED_UPDATE_STATUS":sys.argv[11],
- "LAST_FAILED_UPDATE_AT":sys.argv[12],
- "LAST_FAILED_UPDATE_CASE":sys.argv[13],
+ "VERIFIED_WRAPPER_VERSION":sys.argv[9],
+ "VERIFIED_WRAPPER_COMMIT":sys.argv[10],
+ "VERIFIED_RAW_SHA256":sys.argv[11],
+ "VERIFIED_PATCHED_SHA256":sys.argv[12],
+ "VERIFIED_AT":sys.argv[13],
+ "VERIFIED_ENTRYPOINT":sys.argv[14],
+ "LAST_SEEN_UPSTREAM_VERSION":sys.argv[15],
+ "LAST_FAILED_UPDATE_VERSION":sys.argv[16],
+ "LAST_FAILED_UPDATE_STATUS":sys.argv[17],
+ "LAST_FAILED_UPDATE_AT":sys.argv[18],
+ "LAST_FAILED_UPDATE_CASE":sys.argv[19],
 }
 fd,tmp=tempfile.mkstemp(prefix=".state.",suffix=".tmp",dir=dirp)
 try:
@@ -163,6 +183,12 @@ agy_load_state() {
                 LAST_REPAIR_AT) LAST_REPAIR_AT="$v" ;;
                 LAST_SELF_UPDATE_AT) LAST_SELF_UPDATE_AT="$v" ;;
                 VERIFIED_VERSION) VERIFIED_VERSION="$v" ;;
+                VERIFIED_WRAPPER_VERSION) VERIFIED_WRAPPER_VERSION="$v" ;;
+                VERIFIED_WRAPPER_COMMIT) VERIFIED_WRAPPER_COMMIT="$v" ;;
+                VERIFIED_RAW_SHA256) VERIFIED_RAW_SHA256="$v" ;;
+                VERIFIED_PATCHED_SHA256) VERIFIED_PATCHED_SHA256="$v" ;;
+                VERIFIED_AT) VERIFIED_AT="$v" ;;
+                VERIFIED_ENTRYPOINT) VERIFIED_ENTRYPOINT="$v" ;;
                 LAST_SEEN_UPSTREAM_VERSION) LAST_SEEN_UPSTREAM_VERSION="$v" ;;
                 LAST_FAILED_UPDATE_VERSION) LAST_FAILED_UPDATE_VERSION="$v" ;;
                 LAST_FAILED_UPDATE_STATUS) LAST_FAILED_UPDATE_STATUS="$v" ;;
@@ -453,7 +479,6 @@ agy_rebuild_runtime_unlocked() {
     NEEDS_REPATCH=0
     LAST_REPAIR_AT="$(date -Is)"
     LAST_SELF_UPDATE_AT="${LAST_SELF_UPDATE_AT:-}"
-    VERIFIED_VERSION="$(agy_current_version)"
     agy_write_state
     rm -rf "$tmp_dir"
     printf 'agy: runtime ready (%s)\n' "$reason" >&2
@@ -548,12 +573,23 @@ agy_reload_wrapper_version() {
     fi
 }
 
-agy_mark_verified_version() {
+agy_mark_runtime_success() {
     local version="${1:-}"
     [ -n "$version" ] || return 0
     agy_load_state
+    agy_reload_wrapper_version
     VERIFIED_VERSION="$version"
-    LAST_SEEN_UPSTREAM_VERSION="${LAST_SEEN_UPSTREAM_VERSION:-$version}"
+    VERIFIED_WRAPPER_VERSION="${AGY_WRAPPER_VERSION:-unknown}"
+    VERIFIED_WRAPPER_COMMIT="${AGY_WRAPPER_COMMIT:-unknown}"
+    VERIFIED_RAW_SHA256="$(agy_sha256 "$AGY_RAW")"
+    VERIFIED_PATCHED_SHA256="$(agy_sha256 "$AGY_PATCHED")"
+    VERIFIED_AT="$(date -Is)"
+    VERIFIED_ENTRYPOINT="agy"
+    PATCHED_FROM_ORIGINAL_SHA256="$VERIFIED_RAW_SHA256"
+    PATCHED_SHA256="$VERIFIED_PATCHED_SHA256"
+    LAST_RAW_SHA256="$VERIFIED_RAW_SHA256"
+    NEEDS_REPATCH=0
+    LAST_SEEN_UPSTREAM_VERSION="$version"
     agy_write_state
 }
 
@@ -585,7 +621,6 @@ agy_version_report() {
     upstream="$(printf '%s\n' "$upstream" | sed -n '1p')"
     [ "$status" -eq 0 ] || return "$status"
     agy_print_version_summary "$upstream"
-    agy_mark_verified_version "$upstream"
 }
 
 agy_bootstrap_setup() {
@@ -726,10 +761,6 @@ agy_update_broker_once() {
     if [ "$current" = "$latest" ] && [ -x "$AGY_RAW" ]; then
         agy_set_seen_upstream "$latest"
         agy_load_state
-        if [ -z "${VERIFIED_VERSION:-}" ]; then
-            VERIFIED_VERSION="$latest"
-            agy_write_state
-        fi
         if [ "$display_mode" = "quiet" ]; then
             :
         elif [ "$display_mode" = "run" ]; then
@@ -868,7 +899,6 @@ agy_update_broker_once() {
     NEEDS_REPATCH=0
     LAST_REPAIR_AT="$(date -Is)"
     LAST_SELF_UPDATE_AT="${LAST_SELF_UPDATE_AT:-}"
-    VERIFIED_VERSION="$latest"
     LAST_SEEN_UPSTREAM_VERSION="$latest"
     LAST_FAILED_UPDATE_VERSION=""
     LAST_FAILED_UPDATE_STATUS=""
@@ -994,35 +1024,7 @@ agy_remove_obsolete_control_shims() {
     done
 }
 
-agy_remove() {
-    local yes=0 arg answer
-    for arg in "$@"; do
-        case "$arg" in
-            --yes|-y)
-                yes=1
-                ;;
-            *)
-                printf 'agy remove: unknown option: %s\n' "$arg" >&2
-                printf 'usage: agy remove --yes\n' >&2
-                return 2
-                ;;
-        esac
-    done
-
-    if [ "$yes" != "1" ]; then
-        if [ -t 0 ]; then
-            printf 'Remove agy managed launcher, runtime, raw binary, state, and obsolete shims? [y/N] ' >&2
-            read -r answer || answer=""
-            case "$answer" in
-                y|Y|yes|YES) ;;
-                *) printf 'agy remove: cancelled.\n' >&2; return 1 ;;
-            esac
-        else
-            printf 'agy remove: refusing to remove without --yes in a non-interactive shell.\n' >&2
-            return 2
-        fi
-    fi
-
+agy_remove_run() {
     printf 'agy remove: removing managed Termux runtime files...\n' >&2
     agy_remove_managed_launcher "$AGY_PREFIX/bin/agy"
     agy_remove_obsolete_control_shims
@@ -1033,6 +1035,26 @@ agy_remove() {
     agy_remove_rc_path_block "$AGY_HOME/.bashrc"
     agy_remove_rc_path_block "$AGY_HOME/.zshrc"
     printf 'agy remove: completed. OAuth/user Antigravity config outside the managed runtime was not removed.\n' >&2
+}
+
+agy_remove() {
+    local answer
+    if [ "$#" -ne 0 ]; then
+        printf 'agy remove: unexpected argument: %s\n' "$1" >&2
+        printf 'usage: agy remove\n' >&2
+        return 2
+    fi
+    if [ ! -t 0 ]; then
+        printf 'agy remove: refusing to remove in a non-interactive shell.\n' >&2
+        return 2
+    fi
+    printf 'Remove agy managed launcher, runtime, raw binary, state, and obsolete shims? [y/N] ' >&2
+    read -r answer || answer=""
+    case "$answer" in
+        y|Y|yes|YES) ;;
+        *) printf 'agy remove: cancelled.\n' >&2; return 1 ;;
+    esac
+    agy_remove_run
 }
 
 agy_mark_raw_changed() {
@@ -1048,6 +1070,7 @@ agy_mark_raw_changed() {
 agy_doctor() {
     agy_load_state
     local failures=0 warnings=0 active patched_version interp
+    local current_raw_hash current_patched_hash current_wrapper_version current_wrapper_commit
 
     agy_doctor_ok() { printf 'ok    %s\n' "$*"; }
     agy_doctor_warn() { warnings=$((warnings + 1)); printf 'warn  %s\n' "$*"; }
@@ -1112,6 +1135,25 @@ agy_doctor() {
         agy_doctor_warn 'state/runtime drift detected; run agy setup'
     else
         agy_doctor_ok 'state matches current raw/runtime hashes'
+    fi
+
+    if [ -n "${VERIFIED_AT:-}" ]; then
+        agy_reload_wrapper_version
+        current_raw_hash="$(agy_sha256 "$AGY_RAW")"
+        current_patched_hash="$(agy_sha256 "$AGY_PATCHED")"
+        current_wrapper_version="${AGY_WRAPPER_VERSION:-unknown}"
+        current_wrapper_commit="${AGY_WRAPPER_COMMIT:-unknown}"
+        if [ "${VERIFIED_ENTRYPOINT:-}" = "agy" ] \
+            && [ "${VERIFIED_RAW_SHA256:-}" = "$current_raw_hash" ] \
+            && [ "${VERIFIED_PATCHED_SHA256:-}" = "$current_patched_hash" ] \
+            && [ "${VERIFIED_WRAPPER_VERSION:-}" = "$current_wrapper_version" ] \
+            && [ "${VERIFIED_WRAPPER_COMMIT:-}" = "$current_wrapper_commit" ]; then
+            agy_doctor_ok "last successful agy runtime tuple matches current files: $VERIFIED_AT"
+        else
+            agy_doctor_warn 'last successful agy runtime tuple differs from current files'
+        fi
+    else
+        agy_doctor_ok 'last successful agy runtime tuple not recorded yet'
     fi
 
     [ -f "$AGY_STATE_FILE" ] && agy_doctor_ok "state file exists: $AGY_STATE_FILE" || agy_doctor_warn "state file missing: $AGY_STATE_FILE"
@@ -1182,7 +1224,7 @@ agy_main() {
             agy_rebuild_runtime postflight-update
         fi
         if [ "$exit_code" -eq 0 ]; then
-            agy_mark_verified_version "$(agy_current_version 2>/dev/null || true)"
+            agy_mark_runtime_success "$(agy_current_version 2>/dev/null || true)"
         fi
         if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 130 ]; then
             case_dir=$(agy_make_case "$exit_code" "$temp_raw")
@@ -1200,6 +1242,5 @@ agy_main() {
     agy_runtime_command "$AGY_PATCHED" "$@"
     exit_code=$?
     set -e
-    [ "$exit_code" -eq 0 ] && agy_mark_verified_version "$(agy_current_version 2>/dev/null || true)"
     return "$exit_code"
 }
