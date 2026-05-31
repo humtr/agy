@@ -565,6 +565,17 @@ agy_print_version_summary() {
     printf '%-8s : %s\n' wrapper "$wrapper_version"
 }
 
+agy_wrapper_help() {
+    printf '\n'
+    printf 'Wrapper commands\n'
+    printf '  %-8s  %s\n' 'agy' 'Managed entrypoint; bare execution performs light preflight and may refresh the upstream binary.'
+    printf '  %-8s  %s\n' 'setup' 'Refresh launcher/support files and ensure raw/runtime are ready.'
+    printf '  %-8s  %s\n' 'update' 'Update the official upstream binary only.'
+    printf '  %-8s  %s\n' 'doctor' 'Check PATH, launcher, runtime, resolver, CA, and state.'
+    printf '  %-8s  %s\n' 'version' 'Print `agy :` and `wrapper :` version rows.'
+    printf '  %-8s  %s\n' 'remove' 'Remove the managed launcher, runtime, raw copy, state, and obsolete shims.'
+}
+
 agy_version_report() {
     local upstream status
     set +e
@@ -1147,7 +1158,9 @@ agy_main() {
             shift || true
             agy_cheap_launch_guard || return $?
             agy_runtime_command "$AGY_PATCHED" --help "$@"
-            return $?
+            status=$?
+            agy_wrapper_help
+            return "$status"
             ;;
     esac
 

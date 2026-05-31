@@ -8,6 +8,7 @@ Termux-managed runtime with a single public launcher at `$PREFIX/bin/agy`.
 | Command | Behavior |
 | :--- | :--- |
 | `agy` | Normal CLI entrypoint. Bare execution performs light preflight and may refresh the upstream binary when needed. |
+| `agy help` | Show native help first, then wrapper help below it. |
 | `agy setup` | Refresh managed launcher/support files from `main`, ensure raw/runtime are ready, and print `agy :` / `wrapper :` version rows. |
 | `agy update` | Termux-safe official binary update pipeline, then print `agy :` / `wrapper :` version rows. |
 | `agy doctor` | Local diagnostics for PATH, launcher, runtime, resolver, CA, and state. |
