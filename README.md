@@ -23,8 +23,7 @@ usable.
 | `agy setup` | Refresh managed launcher/support files from `main` and ensure raw/runtime are ready. |
 | `agy update` | Update the official upstream `agy` binary only. |
 | `agy doctor` | Check PATH, launcher, raw/runtime, loader, resolver, CA, and state. |
-| `agy info` | Print compact upstream and wrapper version info. |
-| `agy version` | Print the upstream `agy --version` output only. |
+| `agy version` | Print the upstream version, then the wrapper version on the next line. |
 | `agy remove --yes` | Remove the managed launcher, runtime, raw copy, state, and legacy shims. |
 
 ## Files

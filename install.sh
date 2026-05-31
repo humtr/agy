@@ -89,7 +89,6 @@ verify_install() {
     if [ ! -x "$PREFIX/bin/agy" ] && [ ! -f "$PREFIX/bin/agy" ]; then
         fail "launcher missing after setup: $PREFIX/bin/agy"
     fi
-    AGY_SKIP_AUTO_UPDATE=1 "$PREFIX/bin/agy" info >/dev/null || fail 'agy info failed after setup'
     AGY_SKIP_AUTO_UPDATE=1 "$PREFIX/bin/agy" version >/dev/null || fail 'agy version failed after setup'
 }
 

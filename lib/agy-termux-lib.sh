@@ -509,10 +509,6 @@ agy_mode_for_args() {
             printf 'doctor\n'
             return 0
             ;;
-        info)
-            printf 'info\n'
-            return 0
-            ;;
         version)
             printf 'version\n'
             return 0
@@ -561,13 +557,18 @@ agy_mark_verified_version() {
     agy_write_state
 }
 
-agy_wrapper_info() {
-    local upstream wrapper_version wrapper_commit
+agy_version_report() {
+    local upstream wrapper_version wrapper_commit status
     agy_reload_wrapper_version
-    upstream="$(agy_current_version 2>/dev/null || true)"
+    set +e
+    upstream="$(agy_runtime_command "$AGY_PATCHED" --version 2>/dev/null)"
+    status=$?
+    set -e
+    upstream="$(printf '%s\n' "$upstream" | sed -n '1p')"
+    [ "$status" -eq 0 ] || return "$status"
     wrapper_version="${AGY_WRAPPER_VERSION:-unknown}"
     wrapper_commit="${AGY_WRAPPER_COMMIT:-unknown}"
-    printf 'upstream  %s\n' "${upstream:-unknown}"
+    printf '%s\n' "${upstream:-unknown}"
     printf 'wrapper   %s (%s)\n' "$wrapper_version" "$wrapper_commit"
     agy_mark_verified_version "$upstream"
 }
@@ -1136,18 +1137,11 @@ agy_main() {
             agy_doctor
             return $?
             ;;
-        info)
-            shift || true
-            agy_wrapper_info
-            return $?
-            ;;
         version)
             shift || true
             agy_cheap_launch_guard || return $?
-            agy_runtime_command "$AGY_PATCHED" --version
-            exit_code=$?
-            [ "$exit_code" -eq 0 ] && agy_mark_verified_version "$(agy_current_version 2>/dev/null || true)"
-            return "$exit_code"
+            agy_version_report
+            return $?
             ;;
         help)
             shift || true

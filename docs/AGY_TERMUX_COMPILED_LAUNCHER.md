@@ -12,9 +12,8 @@ managed shell path or execute the patched Linux ARM64 runtime directly.
 | `agy setup` | managed shell path for launcher/support refresh |
 | `agy update` | managed shell path for the Termux-safe binary update pipeline |
 | `agy doctor` | managed shell path for diagnostics |
-| `agy info` | managed shell path for wrapper/upstream version info |
 | `agy remove` | managed shell path for cleanup/removal |
-| `agy version` | upstream passthrough translated to `--version` |
+| `agy version` | managed shell path for upstream version plus wrapper version output |
 | leading-option commands such as `agy --print` | upstream passthrough |
 | all other subcommands | upstream passthrough |
 

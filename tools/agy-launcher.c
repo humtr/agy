@@ -64,8 +64,7 @@ static struct route decide_route(int argc, char **argv) {
     if (streq(argv[1], "update")) return (struct route){ROUTE_MANAGED_SHELL, "update route"};
     if (streq(argv[1], "remove")) return (struct route){ROUTE_MANAGED_SHELL, "remove route"};
     if (streq(argv[1], "doctor")) return (struct route){ROUTE_MANAGED_SHELL, "doctor route"};
-    if (streq(argv[1], "info")) return (struct route){ROUTE_MANAGED_SHELL, "info route"};
-    if (streq(argv[1], "version")) return (struct route){ROUTE_UPSTREAM, "version passthrough"};
+    if (streq(argv[1], "version")) return (struct route){ROUTE_MANAGED_SHELL, "version route"};
     return (struct route){ROUTE_UPSTREAM, "default passthrough"};
 }
 

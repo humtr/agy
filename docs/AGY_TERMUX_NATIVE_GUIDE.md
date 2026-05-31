@@ -11,8 +11,7 @@ Termux-managed runtime with a single public launcher at `$PREFIX/bin/agy`.
 | `agy setup` | Refresh managed launcher/support files from `main` and ensure raw/runtime are ready. |
 | `agy update` | Termux-safe official binary update pipeline. |
 | `agy doctor` | Local diagnostics for PATH, launcher, runtime, resolver, CA, and state. |
-| `agy info` | Compact upstream and wrapper version summary. |
-| `agy version` | Print the upstream runtime binary version only. |
+| `agy version` | Print the upstream runtime version, then the wrapper version on the next line. |
 | `agy remove --yes` | Remove the managed launcher, runtime/raw files, state, and legacy shims. |
 
 Do not add a second public control command. Legacy `agy-t` and `agy-termux`
