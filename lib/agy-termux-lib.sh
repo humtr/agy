@@ -34,20 +34,7 @@ AGY_RESOLV_CONF="${AGY_RESOLV_CONF:-$AGY_PREFIX/etc/resolv.conf}"
 AGY_RESOLVER_FD=33
 AGY_RESOLVER_PROBE_HOST="${AGY_RESOLVER_PROBE_HOST:-oauth2.googleapis.com}"
 AGY_MANIFEST_URL="${AGY_MANIFEST_URL:-https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_arm64.json}"
-AGY_VERSIONED_MANIFEST_BASE="${AGY_VERSIONED_MANIFEST_BASE:-https://storage.googleapis.com/antigravity-public/antigravity-cli}"
 AGY_AUTO_UPDATE_TIMEOUT="${AGY_AUTO_UPDATE_TIMEOUT:-4}"
-if [ -z "${AGY_FALLBACK_VERSION_FILE:-}" ]; then
-    if [ -f "$AGY_LIB_DIR/verified-agy-version.env" ]; then
-        AGY_FALLBACK_VERSION_FILE="$AGY_LIB_DIR/verified-agy-version.env"
-    else
-        AGY_FALLBACK_VERSION_FILE="$AGY_PROJECT_ROOT/config/verified-agy-version.env"
-    fi
-fi
-if [ -z "${AGY_VERIFIED_FALLBACK_VERSION:-}" ] && [ -f "$AGY_FALLBACK_VERSION_FILE" ]; then
-    # shellcheck disable=SC1090
-    . "$AGY_FALLBACK_VERSION_FILE"
-fi
-
 agy_sha256() {
     [ -f "$1" ] || return 0
     sha256sum "$1" 2>/dev/null | awk '{print $1}'
@@ -353,7 +340,7 @@ agy_make_case() {
         printf '%s\n' '- do not touch auth files or rerun auth login'
         printf '%s\n' '- do not overwrite or patch the raw official agy binary'
         printf '%s\n' '- propose minimal safe fix commands'
-        printf '%s\n' '- propose rollback commands'
+        printf '%s\n' '- prefer agy doctor, agy repair, agy sync, or bootstrap reinstall as recovery commands'
         printf '%s\n' '- state whether automatic editing is safe'
     } >"$case_dir/repair_prompt.txt"
     agy_redact_file "$case_dir/repair_prompt.txt" "$case_dir/repair_prompt.redacted"
@@ -506,7 +493,7 @@ agy_light_preflight() {
     agy_cheap_launch_guard || return $?
     agy_load_state
     if agy_needs_repatch; then
-        printf 'agy: runtime drift detected; run "agy update" or "agy-termux repair".\n' >&2
+        printf 'agy: runtime drift detected; run "agy repair".\n' >&2
     fi
     return 0
 }
@@ -518,8 +505,16 @@ agy_mode_for_args() {
             printf 'bare\n'
             return 0
             ;;
-        update|upgrade|self-update)
+        update)
             printf 'update\n'
+            return 0
+            ;;
+        uninstall)
+            printf 'uninstall\n'
+            return 0
+            ;;
+        version)
+            printf 'version\n'
             return 0
             ;;
         --help|-h|help)
@@ -581,9 +576,6 @@ print(value)
 PY
 }
 
-agy_versioned_manifest_url() {
-    printf '%s/%s/manifest.json\n' "$AGY_VERSIONED_MANIFEST_BASE" "$1"
-}
 
 agy_validate_tarball_safe() {
     local tar_path="$1"
@@ -838,7 +830,7 @@ agy_update_broker_once() {
 }
 
 agy_update_broker() {
-    local mode="${1:-auto}" status fallback_url fallback_label
+    local mode="${1:-auto}" status
     local display_mode="${2:-$mode}"
 
     if agy_with_lock agy_update_broker_once "$AGY_MANIFEST_URL" "current" "$display_mode"; then
@@ -860,22 +852,119 @@ agy_update_broker() {
         return 0
     fi
 
-    if [ -z "${AGY_VERIFIED_FALLBACK_VERSION:-}" ]; then
-        printf 'agy: current update failed and no verified fallback version is configured.\n' >&2
-        return "$status"
+    if [ "$mode" = "explicit" ]; then
+        printf 'agy: update failed; keeping the currently installed runtime.\n' >&2
     fi
-
-    fallback_url=$(agy_versioned_manifest_url "$AGY_VERIFIED_FALLBACK_VERSION")
-    fallback_label="verified fallback $AGY_VERIFIED_FALLBACK_VERSION"
-    printf 'agy: current update failed; trying %s...\n' "$fallback_label" >&2
-    agy_with_lock agy_update_broker_once "$fallback_url" "$fallback_label" "$display_mode"
+    return "$status"
 }
 
 agy_auto_update() {
     [ "${AGY_SKIP_AUTO_UPDATE:-0}" = "1" ] && return 0
     [ "${1:-}" = "auth" ] && return 0
     [ "${1:-}" = "--version" ] && return 0
+    [ "${1:-}" = "version" ] && return 0
     agy_update_broker auto run
+}
+
+agy_remove_path() {
+    local path="$1"
+    if [ -e "$path" ] || [ -L "$path" ]; then
+        rm -rf "$path"
+        printf 'removed %s\n' "$path"
+    fi
+}
+
+agy_remove_rc_path_block() {
+    local rc="$1" marker_begin marker_end
+    marker_begin="# >>> agy native path >>>"
+    marker_end="# <<< agy native path <<<"
+    [ -f "$rc" ] || return 0
+    grep -Fq "$marker_begin" "$rc" 2>/dev/null || return 0
+    python3 - "$rc" "$marker_begin" "$marker_end" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+marker_begin = sys.argv[2]
+marker_end = sys.argv[3]
+lines = path.read_text().splitlines(keepends=True)
+out = []
+skip = False
+changed = False
+for line in lines:
+    if marker_begin in line:
+        skip = True
+        changed = True
+        continue
+    if skip:
+        if marker_end in line:
+            skip = False
+        continue
+    out.append(line)
+if changed:
+    path.write_text("".join(out))
+PY
+    printf 'removed PATH block from %s\n' "$rc"
+}
+
+agy_remove_legacy_control_shims() {
+    local path
+    for path in \
+        "$AGY_HOME/.local/bin/agy-t" \
+        "$AGY_HOME/bin/agy-t" \
+        "$AGY_HOME/bin/agy-termux" \
+        "$AGY_PREFIX/bin/agy-t" \
+        "$AGY_PREFIX/bin/agy-termux"; do
+        if [ -L "$path" ] || [ -f "$path" ]; then
+            rm -f "$path"
+            printf 'removed %s\n' "$path"
+        elif [ -d "$path" ]; then
+            printf 'skipped legacy shim directory %s\n' "$path"
+        fi
+    done
+}
+
+agy_uninstall() {
+    local yes=0 arg answer
+    for arg in "$@"; do
+        case "$arg" in
+            --yes|-y)
+                yes=1
+                ;;
+            *)
+                printf 'agy uninstall: unknown option: %s\n' "$arg" >&2
+                printf 'usage: agy uninstall --yes\n' >&2
+                return 2
+                ;;
+        esac
+    done
+
+    if [ "$yes" != "1" ]; then
+        if [ -t 0 ]; then
+            printf 'Remove agy Termux wrappers, runtime, raw binary, state, source cache, and managed shims? [y/N] ' >&2
+            read -r answer || answer=""
+            case "$answer" in
+                y|Y|yes|YES) ;;
+                *) printf 'agy uninstall: cancelled.\n' >&2; return 1 ;;
+            esac
+        else
+            printf 'agy uninstall: refusing to uninstall without --yes in a non-interactive shell.\n' >&2
+            return 2
+        fi
+    fi
+
+    printf 'agy uninstall: removing managed Termux runtime files...\n' >&2
+    agy_remove_path "$AGY_USER_WRAPPER"
+    agy_remove_path "$AGY_HOME/.local/bin/agy"
+    agy_remove_path "$AGY_PREFIX/bin/agy"
+    agy_remove_legacy_control_shims
+    agy_remove_path "$AGY_NATIVE_ROOT"
+    agy_remove_path "$AGY_STATE_DIR"
+    agy_remove_path "$AGY_SHIM_DIR"
+    agy_remove_rc_path_block "$AGY_HOME/.profile"
+    agy_remove_rc_path_block "$AGY_HOME/.bashrc"
+    agy_remove_rc_path_block "$AGY_HOME/.zshrc"
+    printf 'agy uninstall: completed. OAuth/user Antigravity config outside the managed runtime was not removed.\n' >&2
 }
 
 agy_mark_raw_changed() {
@@ -912,7 +1001,9 @@ agy_status() {
     printf 'glibc loader: %s (%s)\n' "$AGY_LOADER" "$([ -x "$AGY_LOADER" ] && echo ok || echo missing)"
     printf 'SSL_CERT_FILE: %s (%s)\n' "$AGY_CERT_FILE" "$([ -f "$AGY_CERT_FILE" ] && echo ok || echo missing)"
     printf 'SSL_CERT_DIR: %s (%s)\n' "$AGY_CERT_DIR" "$([ -d "$AGY_CERT_DIR" ] && echo ok || echo missing)"
-    resolver_counts="$(agy_runtime_resolver_counts "$AGY_PATCHED" 2>/dev/null || printf 'missing missing')"
+    if ! resolver_counts="$(agy_runtime_resolver_counts "$AGY_PATCHED" 2>/dev/null)"; then
+        resolver_counts='missing missing'
+    fi
     etc_count="$(printf '%s' "$resolver_counts" | awk '{print $1}')"
     fd33_count="$(printf '%s' "$resolver_counts" | awk '{print $2}')"
     printf 'resolver path: /proc/self/fd/%s\n' "$AGY_RESOLVER_FD"
@@ -923,77 +1014,85 @@ agy_status() {
     printf 'glibc hosts: %s\n' "$AGY_PREFIX/glibc/etc/hosts $([ -f "$AGY_PREFIX/glibc/etc/hosts" ] && echo present || echo missing)"
     printf 'glibc nsswitch: %s\n' "$AGY_PREFIX/glibc/etc/nsswitch.conf $([ -f "$AGY_PREFIX/glibc/etc/nsswitch.conf" ] && echo present || echo missing)"
     printf 'tcmalloc shim policy: removed from runtime and active source\n'
-    printf 'update broker: current manifest sha512 verification'
-    if [ -n "${AGY_VERIFIED_FALLBACK_VERSION:-}" ]; then
-        printf ' with verified fallback %s' "$AGY_VERIFIED_FALLBACK_VERSION"
-    fi
-    printf '\n'
+    printf 'update broker: current manifest sha512 verification; no repo-pinned fallback\n'
     printf 'last diagnostic case: %s\n' "$(agy_last_case_path)"
 }
 
-agy_show_prompt_path() {
-    local last
-    last=$(agy_last_case_path)
-    if [ -n "$last" ] && [ -f "$last/repair_prompt.txt" ]; then
-        printf '%s\n' "$last/repair_prompt.txt"
-    else
-        printf 'No diagnostic case found.\n'
-    fi
-}
+agy_doctor() {
+    agy_load_state
+    local failures=0 warnings=0 resolver_counts etc_count fd33_count active patched_version interp
 
-agy_send_prompt() {
-    local tool="$1"
-    local prompt
-    prompt=$(agy_show_prompt_path)
-    if [ ! -f "$prompt" ]; then
-        printf '%s\n' "$prompt"
-        return 1
-    fi
-    if ! command -v "$tool" >/dev/null 2>&1; then
-        printf '%s missing. Prompt path: %s\n' "$tool" "$prompt"
-        return 1
-    fi
-    case "$tool" in
-        codex)
-            codex exec "$(cat "$prompt")"
+    agy_doctor_ok() { printf 'ok    %s\n' "$*"; }
+    agy_doctor_warn() { warnings=$((warnings + 1)); printf 'warn  %s\n' "$*"; }
+    agy_doctor_fail() { failures=$((failures + 1)); printf 'fail  %s\n' "$*"; }
+
+    printf 'agy doctor\n'
+    active="$(command -v agy 2>/dev/null || true)"
+    case "$active" in
+        "$AGY_USER_WRAPPER"|"$AGY_HOME/.local/bin/agy"|"$AGY_PREFIX/bin/agy")
+            agy_doctor_ok "PATH resolves agy to managed entrypoint: $active"
             ;;
-        gemini)
-            gemini <"$prompt"
+        "")
+            agy_doctor_fail 'agy is not on PATH'
             ;;
         *)
-            "$tool" <"$prompt"
+            agy_doctor_fail "PATH resolves agy to unexpected path: $active"
             ;;
     esac
-}
 
-agy_termux_menu() {
-    while true; do
-        printf '\n1. status\n2. show last diagnostic log\n3. show repair prompt path\n4. send last case to Gemini\n5. send last case to Codex\n6. send last case to both\n7. repair-check\n8. exit\n'
-        printf 'Select: '
-        IFS= read -r opt || return 0
-        case "$opt" in
-            1) agy_status ;;
-            2) last=$(agy_last_case_path); if [ -n "$last" ] && [ -f "$last/safe.log" ]; then sed -n '1,220p' "$last/safe.log"; else printf 'No diagnostic log found.\n'; fi ;;
-            3) agy_show_prompt_path ;;
-            4) agy_send_prompt gemini ;;
-            5) agy_send_prompt codex ;;
-            6) agy_send_prompt gemini; agy_send_prompt codex ;;
-            7)
-                if agy_needs_repatch; then
-                    printf 'Repair is needed. Run repair now? [y/N] '
-                    IFS= read -r yesno || yesno=n
-                    case "$yesno" in
-                        y|Y|yes|YES) agy_repair menu ;;
-                        *) printf 'No changes made.\n' ;;
-                    esac
-                else
-                    printf 'Repair not needed.\n'
-                fi
-                ;;
-            8) return 0 ;;
-            *) printf 'Invalid selection.\n' ;;
-        esac
-    done
+    [ -x "$AGY_USER_WRAPPER" ] && agy_doctor_ok "user launcher exists: $AGY_USER_WRAPPER" || agy_doctor_fail "user launcher missing or not executable: $AGY_USER_WRAPPER"
+    [ -x "$AGY_HOME/.local/bin/agy" ] && agy_doctor_ok "local shim exists: $AGY_HOME/.local/bin/agy" || agy_doctor_warn "local shim missing: $AGY_HOME/.local/bin/agy"
+    [ -x "$AGY_PREFIX/bin/agy" ] && agy_doctor_ok "prefix shim exists: $AGY_PREFIX/bin/agy" || agy_doctor_warn "prefix shim missing: $AGY_PREFIX/bin/agy"
+    [ -x "$AGY_EXEC_WRAPPER" ] && agy_doctor_ok "runtime exec wrapper exists: $AGY_EXEC_WRAPPER" || agy_doctor_fail "runtime exec wrapper missing: $AGY_EXEC_WRAPPER"
+    [ -r "$AGY_RUNTIME_DIR/lib.sh" ] && agy_doctor_ok "runtime library installed: $AGY_RUNTIME_DIR/lib.sh" || agy_doctor_fail "runtime library missing: $AGY_RUNTIME_DIR/lib.sh"
+    [ -x "$AGY_RUNTIME_BUILDER" ] && agy_doctor_ok "runtime builder installed: $AGY_RUNTIME_BUILDER" || agy_doctor_fail "runtime builder missing: $AGY_RUNTIME_BUILDER"
+    [ -r "$AGY_RUNTIME_DIR/wrapper-version.env" ] && agy_doctor_ok "wrapper metadata installed: $AGY_RUNTIME_DIR/wrapper-version.env" || agy_doctor_warn "wrapper metadata missing: $AGY_RUNTIME_DIR/wrapper-version.env"
+
+    [ -x "$AGY_RAW" ] && agy_doctor_ok "raw upstream binary exists: $AGY_RAW" || agy_doctor_fail "raw upstream binary missing: $AGY_RAW"
+    [ -x "$AGY_PATCHED" ] && agy_doctor_ok "patched runtime exists: $AGY_PATCHED" || agy_doctor_fail "patched runtime missing: $AGY_PATCHED"
+    [ -x "$AGY_LOADER" ] && agy_doctor_ok "glibc loader exists: $AGY_LOADER" || agy_doctor_fail "glibc loader missing: $AGY_LOADER"
+    [ -d "$AGY_GLIBC_LIB" ] && agy_doctor_ok "glibc library dir exists: $AGY_GLIBC_LIB" || agy_doctor_fail "glibc library dir missing: $AGY_GLIBC_LIB"
+    [ -f "$AGY_CERT_FILE" ] && agy_doctor_ok "CA bundle exists: $AGY_CERT_FILE" || agy_doctor_fail "CA bundle missing: $AGY_CERT_FILE"
+    [ -r "$AGY_RESOLV_CONF" ] && agy_doctor_ok "resolver source readable: $AGY_RESOLV_CONF" || agy_doctor_fail "resolver source unreadable: $AGY_RESOLV_CONF"
+
+    if agy_native_resolver_ok; then
+        agy_doctor_ok "resolver fd $AGY_RESOLVER_FD can be opened"
+    else
+        agy_doctor_fail "resolver fd $AGY_RESOLVER_FD cannot be opened from $AGY_RESOLV_CONF"
+    fi
+
+    if ! resolver_counts="$(agy_runtime_resolver_counts "$AGY_PATCHED" 2>/dev/null)"; then
+        resolver_counts='missing missing'
+    fi
+    etc_count="$(printf '%s' "$resolver_counts" | awk '{print $1}')"
+    fd33_count="$(printf '%s' "$resolver_counts" | awk '{print $2}')"
+    if [ "$etc_count" = "0" ] && [ "$fd33_count" != "0" ] && [ "$fd33_count" != "missing" ]; then
+        agy_doctor_ok "runtime resolver rewrite present (/etc=$etc_count fd33=$fd33_count)"
+    else
+        agy_doctor_fail "runtime resolver rewrite unexpected (/etc=$etc_count fd33=$fd33_count)"
+    fi
+
+    if command -v patchelf >/dev/null 2>&1 && [ -x "$AGY_PATCHED" ]; then
+        interp="$(patchelf --print-interpreter "$AGY_PATCHED" 2>/dev/null || true)"
+        [ "$interp" = "$AGY_LOADER" ] && agy_doctor_ok "runtime interpreter matches loader" || agy_doctor_fail "runtime interpreter mismatch: ${interp:-unknown}"
+    else
+        agy_doctor_warn 'patchelf unavailable or runtime missing; skipped interpreter check'
+    fi
+
+    if [ -x "$AGY_PATCHED" ] && [ -x "$AGY_LOADER" ] && [ -r "$AGY_RESOLV_CONF" ]; then
+        patched_version="$(AGY_SKIP_AUTO_UPDATE=1 agy_run_candidate "$AGY_PATCHED" --version 2>/dev/null || true)"
+        [ -n "$patched_version" ] && agy_doctor_ok "patched runtime starts: $patched_version" || agy_doctor_fail 'patched runtime --version failed'
+    fi
+
+    if agy_needs_repatch; then
+        agy_doctor_warn 'state/runtime drift detected; run agy repair'
+    else
+        agy_doctor_ok 'state matches current raw/runtime hashes'
+    fi
+
+    [ -f "$AGY_STATE_FILE" ] && agy_doctor_ok "state file exists: $AGY_STATE_FILE" || agy_doctor_warn "state file missing: $AGY_STATE_FILE"
+    printf 'summary: %s failure(s), %s warning(s)\n' "$failures" "$warnings"
+    [ "$failures" -eq 0 ]
 }
 
 agy_main() {
@@ -1001,14 +1100,23 @@ agy_main() {
     first="${1:-}"
     mode="$(agy_mode_for_args "$first")"
 
-    if [ "${1:-}" = "termux" ] && [ "${AGY_PASSTHROUGH_TERMUX:-0}" != "1" ]; then
-        agy_termux_menu
-        return 0
-    fi
 
     if [ "$mode" = "update" ]; then
         agy_preflight || return $?
         agy_update_broker explicit
+        return $?
+    fi
+
+    if [ "$mode" = "uninstall" ]; then
+        shift || true
+        agy_uninstall "$@"
+        return $?
+    fi
+
+    if [ "$mode" = "version" ]; then
+        shift || true
+        agy_cheap_launch_guard || return $?
+        agy_runtime_command "$AGY_PATCHED" --version
         return $?
     fi
 
@@ -1060,7 +1168,7 @@ agy_main() {
         case_dir=$(agy_make_case "$exit_code" "$temp_raw")
         printf 'agy failed with status %s.\n' "$exit_code" >&2
         printf 'Termux diagnostic case created:\n  %s\n' "$case_dir" >&2
-        printf 'Next:\n  agy-termux doctor\n' >&2
+        printf 'Next:\n  agy doctor\n' >&2
     fi
     rm -f "$temp_raw"
     return "$exit_code"

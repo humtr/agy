@@ -145,12 +145,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "input",
         nargs="?",
-        default=str(Path.home() / ".local/bin/agy"),
-        help="official raw agy binary",
+        default=None,
+        help="official raw agy binary; defaults to the managed raw cache when omitted",
     )
     parser.add_argument(
         "--output",
-        help="runtime output path; defaults to <input>.runtime",
+        help=(
+            "runtime output path; defaults to the managed runtime path when input "
+            "is omitted, otherwise <input>.runtime"
+        ),
     )
     parser.add_argument(
         "--skip-syscall-compat",
@@ -384,8 +387,18 @@ def report_to_dict(report: BuildReport) -> dict:
 
 def main() -> int:
     args = parse_args()
-    src = Path(args.input).expanduser()
-    dst = Path(args.output).expanduser() if args.output else Path(str(src) + ".runtime")
+    input_omitted = args.input is None
+    src = (
+        Path.home() / ".local/lib/agy/native/raw/agy"
+        if input_omitted
+        else Path(args.input).expanduser()
+    )
+    if args.output:
+        dst = Path(args.output).expanduser()
+    elif input_omitted:
+        dst = Path.home() / ".local/lib/agy/native/runtime/agy"
+    else:
+        dst = Path(str(src) + ".runtime")
 
     try:
         print(f"input          : {src}")

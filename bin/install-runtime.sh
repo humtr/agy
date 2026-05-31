@@ -8,7 +8,7 @@ AGY_BACKUP_KEEP="${AGY_BACKUP_KEEP:-2}"
 
 usage() {
     cat <<'EOF'
-Usage: bash bin/install-runtime.sh [--install|--status|--repair|--install-wrappers|--install-launcher|--install-shell-wrapper|--init-state]
+Usage: bash bin/install-runtime.sh [--install|--status|--repair|--uninstall|--install-wrappers|--install-launcher|--install-shell-wrapper|--init-state]
 
 Default action: --status
 
@@ -16,6 +16,7 @@ Actions:
   --install          Install wrappers, download/update raw agy, and build the runtime copy.
   --status           Print current wrapper/runtime status.
   --repair           Reinstall wrappers and rebuild the patched runtime copy from raw agy.
+  --uninstall        Remove managed wrappers, runtime files, state, source cache, and shims.
   --install-wrappers Install the agy launcher, runtime support files, and shell fallback.
   --install-launcher Build/install compiled launcher at ~/bin/agy.
   --install-shell-wrapper Install shell fallback wrapper.
@@ -79,20 +80,9 @@ agy_prune_backups() {
 }
 
 remove_legacy_control_shims() {
-    local p
-    for p in \
-        "$AGY_HOME/.local/bin/agy-t" \
-        "$AGY_HOME/bin/agy-t" \
-        "$AGY_HOME/bin/agy-termux" \
-        "$AGY_PREFIX/bin/agy-t" \
-        "$AGY_PREFIX/bin/agy-termux"; do
-        if [ -e "$p" ]; then
-            rm -f "$p"
-            echo "Removed legacy control shim:"
-            echo "  $p"
-        fi
-    done
+    agy_remove_legacy_control_shims
 }
+
 
 install_shell_fallback() {
     mkdir -p "$AGY_RUNTIME_DIR"
@@ -138,6 +128,11 @@ agy_verify_current_entrypoint() {
     return 1
 }
 case "\${1:-}" in
+    version)
+        shift
+        agy_runtime_command "\$AGY_PATCHED" --version
+        exit \$?
+        ;;
     info)
         shift
         agy_wrapper_info
@@ -155,6 +150,11 @@ case "\${1:-}" in
         fi
         exit "\$rc"
         ;;
+    doctor)
+        shift
+        agy_doctor
+        exit \$?
+        ;;
     sync)
         shift
         AGY_MANAGED_MODE=sync
@@ -162,6 +162,11 @@ case "\${1:-}" in
         curl -fsSL https://raw.githubusercontent.com/humtr/agy/main/install.sh | bash
         rc=\$?
         exit "\$rc"
+        ;;
+    uninstall)
+        shift
+        agy_uninstall "\$@"
+        exit \$?
         ;;
 esac
 agy_main "\$@"
@@ -187,6 +192,18 @@ install_compiled_launcher() {
     chmod 755 "$launcher_bin"
 }
 
+agy_is_elf() {
+    python3 - "$1" <<'PY'
+import sys
+from pathlib import Path
+
+try:
+    raise SystemExit(0 if Path(sys.argv[1]).read_bytes()[:4] == b"\x7fELF" else 1)
+except OSError:
+    raise SystemExit(1)
+PY
+}
+
 install_local_launcher_shim() {
     local local_launcher="$AGY_HOME/.local/bin/agy"
     mkdir -p "$(dirname "$local_launcher")"
@@ -205,7 +222,7 @@ migrate_legacy_raw() {
     if [ -x "$AGY_RAW" ]; then
         return 0
     fi
-    if [ -x "$legacy_raw" ] && file "$legacy_raw" 2>/dev/null | grep -q 'ELF'; then
+    if [ -x "$legacy_raw" ] && agy_is_elf "$legacy_raw"; then
         cp -p "$legacy_raw" "$AGY_RAW"
         chmod 755 "$AGY_RAW"
         mv "$legacy_raw" "$legacy_runtime_raw"
@@ -225,8 +242,6 @@ install_wrappers() {
     chmod 755 "$AGY_RUNTIME_DIR/lib.sh"
     cp "$ROOT_DIR/tools/build-runtime.py" "$AGY_RUNTIME_DIR/build-runtime.py"
     chmod 755 "$AGY_RUNTIME_DIR/build-runtime.py"
-    cp "$ROOT_DIR/config/verified-agy-version.env" "$AGY_RUNTIME_DIR/verified-agy-version.env"
-    chmod 644 "$AGY_RUNTIME_DIR/verified-agy-version.env"
     if [ -f "$ROOT_DIR/config/wrapper-version.env" ]; then
         cp "$ROOT_DIR/config/wrapper-version.env" "$AGY_RUNTIME_DIR/wrapper-version.env"
     else
@@ -287,7 +302,6 @@ EOF
     echo "Installed runtime support:"
     echo "  $AGY_RUNTIME_DIR/lib.sh"
     echo "  $AGY_RUNTIME_DIR/build-runtime.py"
-    echo "  $AGY_RUNTIME_DIR/verified-agy-version.env"
     echo "  $AGY_RUNTIME_DIR/wrapper-version.env"
     echo "Installed shell fallback:"
     echo "  $AGY_RUNTIME_DIR/agy-shell-wrapper.sh"
@@ -301,7 +315,7 @@ install_prefix_wrapper() {
     prefix_wrapper="$AGY_PREFIX/bin/agy"
     mkdir -p "$(dirname "$prefix_wrapper")"
 
-    if [ -e "$prefix_wrapper" ] && ! grep -Fq 'agy-termux managed prefix wrapper' "$prefix_wrapper" 2>/dev/null; then
+    if [ -e "$prefix_wrapper" ] && ! grep -Fq 'agy native managed prefix wrapper' "$prefix_wrapper" 2>/dev/null; then
         backup="$prefix_wrapper.backup-$(date +%Y%m%d-%H%M%S)"
         cp -p "$prefix_wrapper" "$backup"
         echo "Backed up existing PATH wrapper:"
@@ -310,7 +324,7 @@ install_prefix_wrapper() {
 
     cat >"$prefix_wrapper" <<EOF
 #!/bin/sh
-# agy-termux managed prefix wrapper
+# agy native managed prefix wrapper
 exec "$AGY_USER_WRAPPER" "\$@"
 EOF
     chmod 755 "$prefix_wrapper"
@@ -359,21 +373,24 @@ init_state() {
 action="${1:---status}"
 case "$action" in
     --install)
-        agy_with_lock install_wrappers
         agy_with_lock migrate_legacy_raw
+        agy_with_lock install_wrappers
         agy_update_broker explicit
         ;;
     --status)
         agy_status
         ;;
     --repair)
-        agy_with_lock install_wrappers
         agy_with_lock migrate_legacy_raw
+        agy_with_lock install_wrappers
         agy_repair setup
         ;;
+    --uninstall)
+        agy_uninstall --yes
+        ;;
     --install-wrappers)
-        agy_with_lock install_wrappers
         agy_with_lock migrate_legacy_raw
+        agy_with_lock install_wrappers
         ;;
     --install-launcher)
         install_compiled_launcher
@@ -381,6 +398,7 @@ case "$action" in
         ;;
     --install-shell-wrapper)
         install_shell_fallback
+        mkdir -p "$(dirname "$AGY_USER_WRAPPER")"
         cp "$AGY_RUNTIME_DIR/agy-shell-wrapper.sh" "$AGY_USER_WRAPPER"
         chmod 755 "$AGY_USER_WRAPPER"
         agy_prune_backups
