@@ -146,7 +146,7 @@ agy_write_compiled_launcher() {
     chmod 755 "$AGY_PUBLIC_LAUNCHER"
 }
 
-agy_setup_support_files() {
+agy_install_support_files() {
     local wrapper_commit
     mkdir -p "$AGY_RUNTIME_DIR" "$AGY_STATE_DIR"
     cp "$ROOT_DIR/lib/agy-termux-lib.sh" "$AGY_RUNTIME_DIR/lib.sh"
@@ -171,7 +171,7 @@ EOF
     agy_write_managed_shell
 }
 
-agy_setup_launcher() {
+agy_install_launcher() {
     if agy_launcher_available; then
         agy_write_compiled_launcher
     else
@@ -179,7 +179,7 @@ agy_setup_launcher() {
     fi
 }
 
-agy_setup_runtime() {
+agy_ensure_runtime() {
     if [ ! -x "$AGY_RAW" ]; then
         agy_update_broker explicit
         return $?
@@ -191,16 +191,21 @@ agy_setup_runtime() {
     return 0
 }
 
-agy_setup() {
-    agy_setup_support_files
-    agy_setup_launcher
-    agy_remove_obsolete_control_shims
-    agy_remove_rc_path_block "$HOME/.profile"
-    agy_remove_rc_path_block "$HOME/.bashrc"
-    agy_remove_rc_path_block "$HOME/.zshrc"
-    agy_setup_runtime
+agy_setup_cleanup() {
+    agy_cleanup_obsolete_runtime_surface
+}
+
+agy_setup_finalize() {
     agy_prune_backups
     agy_print_version_summary "$(agy_current_version 2>/dev/null || true)"
+}
+
+agy_setup() {
+    agy_install_support_files
+    agy_install_launcher
+    agy_setup_cleanup
+    agy_ensure_runtime
+    agy_setup_finalize
 }
 
 agy_do_remove() {

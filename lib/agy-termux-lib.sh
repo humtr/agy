@@ -1024,16 +1024,20 @@ agy_remove_obsolete_control_shims() {
     done
 }
 
-agy_remove_run() {
-    printf 'agy remove: removing managed Termux runtime files...\n' >&2
-    agy_remove_managed_launcher "$AGY_PREFIX/bin/agy"
+agy_cleanup_obsolete_runtime_surface() {
     agy_remove_obsolete_control_shims
-    agy_remove_tree "$AGY_NATIVE_ROOT"
-    agy_remove_tree "$AGY_STATE_DIR"
-    agy_remove_tree "$AGY_HOME/.local/glibc-shim"
     agy_remove_rc_path_block "$AGY_HOME/.profile"
     agy_remove_rc_path_block "$AGY_HOME/.bashrc"
     agy_remove_rc_path_block "$AGY_HOME/.zshrc"
+}
+
+agy_remove_run() {
+    printf 'agy remove: removing managed Termux runtime files...\n' >&2
+    agy_remove_managed_launcher "$AGY_PREFIX/bin/agy"
+    agy_cleanup_obsolete_runtime_surface
+    agy_remove_tree "$AGY_NATIVE_ROOT"
+    agy_remove_tree "$AGY_STATE_DIR"
+    agy_remove_tree "$AGY_HOME/.local/glibc-shim"
     printf 'agy remove: completed. OAuth/user Antigravity config outside the managed runtime was not removed.\n' >&2
 }
 
