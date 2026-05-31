@@ -11,6 +11,8 @@
 
 #define AGY_RESOLVER_FD 33
 
+static const char agy_managed_launcher_marker[] __attribute__((used)) = "agy native managed launcher";
+
 static const char *env_or(const char *k, const char *d) {
     const char *v = getenv(k);
     return (v && *v) ? v : d;
@@ -46,7 +48,6 @@ static void debug_log(const char *fmt, ...) {
 
 enum route_action {
     ROUTE_UPSTREAM = 0,
-    ROUTE_UPDATE,
     ROUTE_MANAGED_SHELL
 };
 
@@ -55,31 +56,16 @@ struct route {
     const char *reason;
 };
 
-static int is_lifecycle(const char *s) {
-    return streq(s, "update");
-}
-
-static const char *route_name(enum route_action action) {
-    switch (action) {
-        case ROUTE_UPSTREAM: return "upstream";
-        case ROUTE_UPDATE: return "lifecycle";
-        case ROUTE_MANAGED_SHELL: return "managed";
-    }
-    return "unknown";
-}
-
 static struct route decide_route(int argc, char **argv) {
-    if (argc < 2) return (struct route){ROUTE_MANAGED_SHELL, "bare interactive entrypoint"};
-    if (streq(argv[1], "--")) return (struct route){ROUTE_UPSTREAM, "explicit -- passthrough"};
+    if (argc < 2) return (struct route){ROUTE_MANAGED_SHELL, "bare entrypoint"};
+    if (streq(argv[1], "--")) return (struct route){ROUTE_UPSTREAM, "explicit passthrough"};
     if (argv[1][0] == '-') return (struct route){ROUTE_UPSTREAM, "leading option passthrough"};
-    if (is_lifecycle(argv[1])) return (struct route){ROUTE_UPDATE, "reserved binary update command"};
-    if (streq(argv[1], "install")) return (struct route){ROUTE_MANAGED_SHELL, "termux-safe install route"};
-    if (streq(argv[1], "repair")) return (struct route){ROUTE_MANAGED_SHELL, "offline repair route"};
-    if (streq(argv[1], "uninstall")) return (struct route){ROUTE_MANAGED_SHELL, "managed uninstall route"};
-    if (streq(argv[1], "doctor")) return (struct route){ROUTE_MANAGED_SHELL, "diagnostic route"};
-    if (streq(argv[1], "sync")) return (struct route){ROUTE_MANAGED_SHELL, "wrapper sync route"};
+    if (streq(argv[1], "install")) return (struct route){ROUTE_MANAGED_SHELL, "install route"};
+    if (streq(argv[1], "update")) return (struct route){ROUTE_MANAGED_SHELL, "update route"};
+    if (streq(argv[1], "uninstall")) return (struct route){ROUTE_MANAGED_SHELL, "uninstall route"};
+    if (streq(argv[1], "doctor")) return (struct route){ROUTE_MANAGED_SHELL, "doctor route"};
+    if (streq(argv[1], "info")) return (struct route){ROUTE_MANAGED_SHELL, "info route"};
     if (streq(argv[1], "version")) return (struct route){ROUTE_UPSTREAM, "version passthrough"};
-    if (streq(argv[1], "info")) return (struct route){ROUTE_MANAGED_SHELL, "wrapper info route"};
     return (struct route){ROUTE_UPSTREAM, "default passthrough"};
 }
 
@@ -99,16 +85,17 @@ static int open_resolver_fd33(const char *resolver_path) {
     return 0;
 }
 
-static int exec_managed_shell(const char *bash_path, const char *managed_path, int argc, char **argv, const char *mode) {
+static int exec_managed_shell(const char *bash_path, const char *managed_path, int argc, char **argv) {
     char **outv;
     int i;
+
     outv = calloc((size_t)(argc + 2), sizeof(char *));
     if (!outv) return -1;
     outv[0] = (char *)bash_path;
     outv[1] = (char *)managed_path;
     for (i = 1; i < argc; i++) outv[i + 1] = argv[i];
     outv[argc + 1] = NULL;
-    if (mode && *mode) setenv("AGY_MANAGED_MODE", mode, 1);
+
     debug_log("managed path=%s", managed_path);
     execv(bash_path, outv);
     return -1;
@@ -118,9 +105,8 @@ int main(int argc, char **argv) {
     char default_resolver[PATH_MAX];
     char default_runtime[PATH_MAX];
     char default_loader[PATH_MAX];
-    char default_shim[PATH_MAX];
     char default_glibc[PATH_MAX];
-    char default_shell_fallback[PATH_MAX];
+    char default_shell[PATH_MAX];
     char default_bash[PATH_MAX];
     char default_cert_file[PATH_MAX];
     char default_cert_dir[PATH_MAX];
@@ -130,58 +116,47 @@ int main(int argc, char **argv) {
     const char *resolver_path;
     const char *runtime_path;
     const char *loader_path;
-    const char *shim_dir;
     const char *glibc_lib;
+    const char *shell_path;
+    const char *bash_path;
     const char *cert_file;
     const char *cert_dir;
-    const char *shell_fallback;
-    const char *bash_path;
     struct route route;
     char **exec_argv;
-    int i, eargc;
+    int i;
+    int eargc;
 
     if (!home || !*home) home = "/data/data/com.termux/files/home";
     if (!prefix || !*prefix) prefix = "/data/data/com.termux/files/usr";
     if (safe_join(default_resolver, sizeof(default_resolver), prefix, "etc/resolv.conf") < 0) return 125;
     if (safe_join(default_runtime, sizeof(default_runtime), home, ".local/lib/agy/native/runtime/agy") < 0) return 125;
     if (safe_join(default_loader, sizeof(default_loader), prefix, "glibc/lib/ld-linux-aarch64.so.1") < 0) return 125;
-    if (safe_join(default_shim, sizeof(default_shim), home, ".local/glibc-shim") < 0) return 125;
     if (safe_join(default_glibc, sizeof(default_glibc), prefix, "glibc/lib") < 0) return 125;
+    if (safe_join(default_shell, sizeof(default_shell), home, ".local/lib/agy/native/runtime/managed.sh") < 0) return 125;
+    if (safe_join(default_bash, sizeof(default_bash), prefix, "bin/bash") < 0) return 125;
     if (safe_join(default_cert_file, sizeof(default_cert_file), prefix, "etc/tls/cert.pem") < 0) return 125;
     if (safe_join(default_cert_dir, sizeof(default_cert_dir), prefix, "etc/tls/certs") < 0) return 125;
-    if (safe_join(default_shell_fallback, sizeof(default_shell_fallback), home, ".local/lib/agy/native/runtime/agy-shell-wrapper.sh") < 0) return 125;
-    if (safe_join(default_bash, sizeof(default_bash), prefix, "bin/bash") < 0) return 125;
 
     resolver_path = env_or("AGY_RESOLV_CONF", default_resolver);
     runtime_path = env_or("AGY_RUNTIME", default_runtime);
     loader_path = env_or("AGY_LOADER", default_loader);
-    shim_dir = env_or("AGY_SHIM_DIR", default_shim);
     glibc_lib = env_or("AGY_GLIBC_LIB", default_glibc);
+    shell_path = env_or("AGY_MANAGED_SHELL", default_shell);
+    bash_path = env_or("AGY_BASH", default_bash);
     cert_file = env_or("AGY_CERT_FILE", default_cert_file);
     cert_dir = env_or("AGY_CERT_DIR", default_cert_dir);
-    shell_fallback = env_or("AGY_SHELL_FALLBACK", default_shell_fallback);
-    bash_path = env_or("AGY_BASH", default_bash);
 
     route = decide_route(argc, argv);
-    debug_log("route decision=%s reason=%s", route_name(route.action), route.reason ? route.reason : "none");
-    if (route.action == ROUTE_MANAGED_SHELL || route.action == ROUTE_UPDATE) {
-        const char *mode = "managed";
-        if (argc < 2) mode = "bare";
-        else if (is_lifecycle(argv[1])) mode = "update";
-        else if (streq(argv[1], "install")) mode = "install";
-        else if (streq(argv[1], "repair")) mode = "repair";
-        else if (streq(argv[1], "uninstall")) mode = "uninstall";
-        else if (streq(argv[1], "doctor")) mode = "doctor";
-        else if (streq(argv[1], "sync")) mode = "sync";
-        else if (streq(argv[1], "info")) mode = "info";
-        if (exec_managed_shell(bash_path, shell_fallback, argc, argv, mode) < 0) {
-            fprintf(stderr, "agy-launcher: failed to exec managed shell path %s: %s\n", shell_fallback, strerror(errno));
+    debug_log("route decision=%s reason=%s", route.action == ROUTE_MANAGED_SHELL ? "managed" : "upstream", route.reason ? route.reason : "none");
+    if (route.action == ROUTE_MANAGED_SHELL) {
+        if (exec_managed_shell(bash_path, shell_path, argc, argv) < 0) {
+            fprintf(stderr, "agy-launcher: failed to exec managed shell path %s: %s\n", shell_path, strerror(errno));
             return 126;
         }
     }
 
     if (open_resolver_fd33(resolver_path) < 0) {
-        if (exec_managed_shell(bash_path, shell_fallback, argc, argv, "recovery-resolver") < 0) {
+        if (exec_managed_shell(bash_path, shell_path, argc, argv) < 0) {
             fprintf(stderr, "agy-launcher: fallback failed after resolver open error %s: %s\n", resolver_path, strerror(errno));
             return 66;
         }
@@ -194,7 +169,7 @@ int main(int argc, char **argv) {
     if (!getenv("SSL_CERT_FILE")) setenv("SSL_CERT_FILE", cert_file, 1);
     if (!getenv("SSL_CERT_DIR") && access(cert_dir, R_OK) == 0) setenv("SSL_CERT_DIR", cert_dir, 1);
 
-    if (snprintf(lib_path, sizeof(lib_path), "%s:%s", shim_dir, glibc_lib) >= (int)sizeof(lib_path)) {
+    if (snprintf(lib_path, sizeof(lib_path), "%s", glibc_lib) >= (int)sizeof(lib_path)) {
         fprintf(stderr, "agy-launcher: library path is too long\n");
         return 125;
     }
@@ -216,7 +191,7 @@ int main(int argc, char **argv) {
     exec_argv[argc + 3] = NULL;
 
     execv(loader_path, exec_argv);
-    if (exec_managed_shell(bash_path, shell_fallback, argc, argv, "recovery-loader") < 0) {
+    if (exec_managed_shell(bash_path, shell_path, argc, argv) < 0) {
         fprintf(stderr, "agy-launcher: fallback failed after loader exec error %s with runtime %s: %s\n", loader_path, runtime_path, strerror(errno));
         return 127;
     }

@@ -1,24 +1,22 @@
 # AGY Native Termux Runtime Guide
 
-This repository installs a Termux-native mediation layer for the official Linux
-ARM64 Antigravity CLI (`agy`). The public surface is intentionally one command:
-`agy`.
+This repository installs the official Linux ARM64 Antigravity CLI (`agy`) as a
+Termux-managed runtime with a single public launcher at `$PREFIX/bin/agy`.
 
 ## Public command model
 
 | Command | Behavior |
 | :--- | :--- |
-| `agy` | Normal Antigravity CLI entrypoint. Bare execution uses light preflight and the normal update check. |
+| `agy` | Normal CLI entrypoint. Bare execution performs light preflight and may refresh the upstream binary when needed. |
+| `agy install` | Refresh managed launcher/support files from `main` and ensure raw/runtime are ready. |
 | `agy update` | Termux-safe official binary update pipeline. |
-| `agy sync` | Refresh wrapper/runtime support files from this repository's `main` branch. |
-| `agy repair` | Offline rebuild of the patched runtime from the existing raw binary. |
-| `agy doctor` | Local diagnostics for PATH, wrappers, runtime, resolver, CA, and state drift. |
-| `agy version` | Print the upstream runtime binary version. |
-| `agy info` | Print upstream runtime version plus installed wrapper metadata. |
-| `agy uninstall --yes` | Remove managed wrappers, runtime/raw files, state/source cache, and shims. |
+| `agy doctor` | Local diagnostics for PATH, launcher, runtime, resolver, CA, and state. |
+| `agy info` | Compact upstream and wrapper version summary. |
+| `agy version` | Print the upstream runtime binary version only. |
+| `agy uninstall --yes` | Remove the managed launcher, runtime/raw files, state, and legacy shims. |
 
 Do not add a second public control command. Legacy `agy-t` and `agy-termux`
-shims are removed during wrapper installation.
+paths are removed during install and uninstall cleanup.
 
 ## Filesystem layout
 
@@ -29,24 +27,20 @@ shims are removed during wrapper installation.
 ~/.local/lib/agy/native/runtime/agy
   Patched runtime copy produced from raw/agy.
 
-~/.local/lib/agy/native/runtime/run
-  Shell exec wrapper used by fallback paths.
+~/.local/lib/agy/native/runtime/managed.sh
+  Managed shell entrypoint used by launcher fallback paths.
 
 ~/.local/lib/agy/native/runtime/lib.sh
 ~/.local/lib/agy/native/runtime/build-runtime.py
 ~/.local/lib/agy/native/runtime/wrapper-version.env
   Installed runtime support files.
 
-~/bin/agy
+$PREFIX/bin/agy
   Public entrypoint. Prefer a compiled Bionic launcher; use shell fallback when
   clang is unavailable during installation.
 
-~/.local/bin/agy
-$PREFIX/bin/agy
-  Small shims that exec ~/bin/agy.
-
 ~/.local/share/agy/native/state.json
-  Runtime state file recording raw/runtime hashes and update metadata.
+  Runtime state file recording raw/runtime hashes and verification metadata.
 
 ~/.local/share/agy/native/doctor/
   Local diagnostic cases created after non-auth runtime failures.
@@ -60,7 +54,7 @@ patched runtime copy. The current required rewrites are:
 
 - VA39/tcmalloc address-window compatibility rewrites.
 - `faccessat2` syscall compatibility rewrite.
-- `/etc/resolv.conf` → `/proc/self/fd/33` resolver path rewrite.
+- `/etc/resolv.conf` -> `/proc/self/fd/33` resolver path rewrite.
 
 The builder fails closed when the expected runtime section is missing unless a
 human explicitly uses the diagnostic `--allow-broad-scan` flag.
@@ -73,12 +67,18 @@ The launcher/runtime path avoids global linker pollution:
 2. Unset `LD_PRELOAD` and `LD_LIBRARY_PATH`.
 3. Set `GODEBUG=netdns=go` unless the user already set it.
 4. Set Termux CA certificate environment defaults.
-5. Execute the patched runtime through `ld-linux-aarch64.so.1 --library-path`.
+5. Execute `$PREFIX/glibc/lib/ld-linux-aarch64.so.1` with `--library-path`.
 
 This keeps child Bionic tools from inheriting glibc library paths while still
 allowing the Linux ARM64 runtime to resolve DNS and TLS correctly.
 
-## Update, sync, repair, doctor, uninstall
+## Install, update, doctor, uninstall
+
+### `agy install`
+
+`agy install` refreshes the managed launcher and runtime support from the live
+repo, then ensures raw/runtime are ready. If the raw binary is missing, the
+installer fetches the current upstream binary and builds the patched runtime.
 
 ### `agy update`
 
@@ -87,43 +87,24 @@ upstream manifest, verifies checksums, builds a patched candidate, smoke-tests i
 with `--version`, and atomically promotes raw/runtime files while holding the
 native state lock.
 
-The repository does not pin or ship a separate "verified agy version" file.
-Version safety comes from validating the live upstream manifest and candidate
-binary before promotion, while `state.json` records the last locally verified
-installed version.
-
 ### `agy uninstall`
 
 `agy uninstall --yes` removes this repository's managed Termux runtime surface:
-`~/bin/agy`, local/prefix shims, legacy control shims, `~/.local/lib/agy/native`,
-`~/.local/share/agy/native`, the glibc shim directory, and PATH blocks that were
-created by the installer. It does not remove user Antigravity/OAuth config outside
-those managed runtime paths.
-
-### `agy sync`
-
-`agy sync` updates only this repository's wrapper/runtime support. It re-runs the
-bootstrap installer in sync mode and installs wrappers/support files without
-forcing an official agy binary update.
-
-### `agy repair`
-
-`agy repair` is offline. It rebuilds `runtime/agy` from the current `raw/agy`,
-validates the candidate, updates `state.json`, and leaves OAuth/user config
-untouched.
+`$PREFIX/bin/agy`, `~/.local/lib/agy/native`, `~/.local/share/agy/native`, the
+legacy shim paths, and PATH blocks that were created by older installers. It does
+not remove user Antigravity/OAuth config outside those managed runtime paths.
 
 ### `agy doctor`
 
 `agy doctor` is the first troubleshooting command. It checks:
 
 - current `agy` PATH resolution;
-- launcher and shim presence;
+- launcher presence;
 - runtime support files and wrapper metadata;
 - raw and patched binaries;
 - glibc loader/library directory;
 - CA bundle and resolver source;
 - fd 33 resolver readiness;
-- resolver rewrite counts in the patched runtime;
 - patched runtime interpreter when `patchelf` is available;
 - patched runtime `--version` startup;
 - state/runtime hash drift.
