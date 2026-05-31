@@ -18,7 +18,7 @@ Default action: setup
 
 Actions:
   setup        Install managed launcher and runtime support, then ensure raw/runtime are ready.
-  remove       Remove managed launcher, runtime files, state, and legacy shims.
+  remove       Remove managed launcher, runtime files, state, and obsolete shims.
   doctor       Run the local installer/launcher diagnosis checks.
 
 This script never patches the official raw agy binary in place and never runs
@@ -194,7 +194,7 @@ agy_setup_runtime() {
 agy_setup() {
     agy_setup_support_files
     agy_setup_launcher
-    agy_remove_legacy_control_shims
+    agy_remove_obsolete_control_shims
     agy_remove_rc_path_block "$HOME/.profile"
     agy_remove_rc_path_block "$HOME/.bashrc"
     agy_remove_rc_path_block "$HOME/.zshrc"

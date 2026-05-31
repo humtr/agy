@@ -12,10 +12,10 @@ Termux-managed runtime with a single public launcher at `$PREFIX/bin/agy`.
 | `agy update` | Termux-safe official binary update pipeline. |
 | `agy doctor` | Local diagnostics for PATH, launcher, runtime, resolver, CA, and state. |
 | `agy version` | Print the upstream runtime version, then the wrapper version on the next line. |
-| `agy remove --yes` | Remove the managed launcher, runtime/raw files, state, and legacy shims. |
+| `agy remove --yes` | Remove the managed launcher, runtime/raw files, state, and obsolete shims. |
 
-Do not add a second public control command. Legacy `agy-t` and `agy-termux`
-paths are removed during setup and remove cleanup.
+Do not add a second public control command. Obsolete helper paths are removed
+during setup and remove cleanup.
 
 ## Filesystem layout
 
@@ -89,8 +89,8 @@ native state lock.
 ### `agy remove`
 
 `agy remove --yes` removes this repository's managed Termux runtime surface:
-`$PREFIX/bin/agy`, `~/.local/lib/agy/native`, `~/.local/share/agy/native`, the
-legacy shim paths, and PATH blocks that were created by older installers. It does
+`$PREFIX/bin/agy`, `~/.local/lib/agy/native`, `~/.local/share/agy/native`,
+obsolete shim paths, and PATH blocks that were created by older installers. It does
 not remove user Antigravity/OAuth config outside those managed runtime paths.
 
 ### `agy doctor`

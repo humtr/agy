@@ -965,7 +965,7 @@ PY
     printf 'removed PATH block from %s\n' "$rc"
 }
 
-agy_remove_legacy_control_shims() {
+agy_remove_obsolete_control_shims() {
     local path
     for path in \
         "$AGY_HOME/.local/bin/agy" \
@@ -975,7 +975,7 @@ agy_remove_legacy_control_shims() {
         "$AGY_HOME/bin/agy-termux" \
         "$AGY_PREFIX/bin/agy-t" \
         "$AGY_PREFIX/bin/agy-termux"; do
-        agy_remove_file_or_link "$path" "legacy shim"
+        agy_remove_file_or_link "$path" "obsolete shim"
     done
 }
 
@@ -996,7 +996,7 @@ agy_remove() {
 
     if [ "$yes" != "1" ]; then
         if [ -t 0 ]; then
-            printf 'Remove agy managed launcher, runtime, raw binary, state, and legacy shims? [y/N] ' >&2
+            printf 'Remove agy managed launcher, runtime, raw binary, state, and obsolete shims? [y/N] ' >&2
             read -r answer || answer=""
             case "$answer" in
                 y|Y|yes|YES) ;;
@@ -1010,7 +1010,7 @@ agy_remove() {
 
     printf 'agy remove: removing managed Termux runtime files...\n' >&2
     agy_remove_managed_launcher "$AGY_PREFIX/bin/agy"
-    agy_remove_legacy_control_shims
+    agy_remove_obsolete_control_shims
     agy_remove_tree "$AGY_NATIVE_ROOT"
     agy_remove_tree "$AGY_STATE_DIR"
     agy_remove_tree "$AGY_HOME/.local/glibc-shim"
@@ -1028,11 +1028,6 @@ agy_mark_raw_changed() {
     NEEDS_REPATCH=1
     LAST_SELF_UPDATE_AT="$(date -Is)"
     agy_write_state
-}
-
-agy_status() {
-    printf 'agy status is no longer supported; use agy doctor.\n' >&2
-    return 2
 }
 
 agy_doctor() {

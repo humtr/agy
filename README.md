@@ -24,7 +24,7 @@ usable.
 | `agy update` | Update the official upstream `agy` binary only. |
 | `agy doctor` | Check PATH, launcher, raw/runtime, loader, resolver, CA, and state. |
 | `agy version` | Print the upstream version, then the wrapper version on the next line. |
-| `agy remove --yes` | Remove the managed launcher, runtime, raw copy, state, and legacy shims. |
+| `agy remove --yes` | Remove the managed launcher, runtime, raw copy, state, and obsolete shims. |
 
 ## Files
 
