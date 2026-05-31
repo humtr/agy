@@ -8,15 +8,15 @@ Termux-managed runtime with a single public launcher at `$PREFIX/bin/agy`.
 | Command | Behavior |
 | :--- | :--- |
 | `agy` | Normal CLI entrypoint. Bare execution performs light preflight and may refresh the upstream binary when needed. |
-| `agy install` | Refresh managed launcher/support files from `main` and ensure raw/runtime are ready. |
+| `agy setup` | Refresh managed launcher/support files from `main` and ensure raw/runtime are ready. |
 | `agy update` | Termux-safe official binary update pipeline. |
 | `agy doctor` | Local diagnostics for PATH, launcher, runtime, resolver, CA, and state. |
 | `agy info` | Compact upstream and wrapper version summary. |
 | `agy version` | Print the upstream runtime binary version only. |
-| `agy uninstall --yes` | Remove the managed launcher, runtime/raw files, state, and legacy shims. |
+| `agy remove --yes` | Remove the managed launcher, runtime/raw files, state, and legacy shims. |
 
 Do not add a second public control command. Legacy `agy-t` and `agy-termux`
-paths are removed during install and uninstall cleanup.
+paths are removed during setup and remove cleanup.
 
 ## Filesystem layout
 
@@ -72,11 +72,11 @@ The launcher/runtime path avoids global linker pollution:
 This keeps child Bionic tools from inheriting glibc library paths while still
 allowing the Linux ARM64 runtime to resolve DNS and TLS correctly.
 
-## Install, update, doctor, uninstall
+## Setup, update, doctor, remove
 
-### `agy install`
+### `agy setup`
 
-`agy install` refreshes the managed launcher and runtime support from the live
+`agy setup` refreshes the managed launcher and runtime support from the live
 repo, then ensures raw/runtime are ready. If the raw binary is missing, the
 installer fetches the current upstream binary and builds the patched runtime.
 
@@ -87,9 +87,9 @@ upstream manifest, verifies checksums, builds a patched candidate, smoke-tests i
 with `--version`, and atomically promotes raw/runtime files while holding the
 native state lock.
 
-### `agy uninstall`
+### `agy remove`
 
-`agy uninstall --yes` removes this repository's managed Termux runtime surface:
+`agy remove --yes` removes this repository's managed Termux runtime surface:
 `$PREFIX/bin/agy`, `~/.local/lib/agy/native`, `~/.local/share/agy/native`, the
 legacy shim paths, and PATH blocks that were created by older installers. It does
 not remove user Antigravity/OAuth config outside those managed runtime paths.

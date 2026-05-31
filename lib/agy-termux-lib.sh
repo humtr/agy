@@ -325,7 +325,7 @@ agy_make_case() {
         printf '%s\n' '- do not touch auth files or rerun auth login'
         printf '%s\n' '- do not overwrite or patch the raw official agy binary'
         printf '%s\n' '- propose minimal safe fix commands'
-        printf '%s\n' '- prefer agy doctor or agy install as recovery commands'
+        printf '%s\n' '- prefer agy doctor or agy setup as recovery commands'
         printf '%s\n' '- state whether automatic editing is safe'
     } >"$case_dir/install_prompt.txt"
     agy_redact_file "$case_dir/install_prompt.txt" "$case_dir/install_prompt.redacted"
@@ -481,7 +481,7 @@ agy_light_preflight() {
     agy_cheap_launch_guard || return $?
     agy_load_state
     if agy_needs_repatch; then
-        printf 'agy: runtime drift detected; run "agy install".\n' >&2
+        printf 'agy: runtime drift detected; run "agy setup".\n' >&2
     fi
     return 0
 }
@@ -493,16 +493,16 @@ agy_mode_for_args() {
             printf 'bare\n'
             return 0
             ;;
-        install)
-            printf 'install\n'
+        setup)
+            printf 'setup\n'
             return 0
             ;;
         update)
             printf 'update\n'
             return 0
             ;;
-        uninstall)
-            printf 'uninstall\n'
+        remove)
+            printf 'remove\n'
             return 0
             ;;
         doctor)
@@ -572,10 +572,10 @@ agy_wrapper_info() {
     agy_mark_verified_version "$upstream"
 }
 
-agy_bootstrap_install() {
+agy_bootstrap_setup() {
     local tmp_dir
     tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/agy-install.XXXXXX") || return 1
-    trap 'rm -rf "$tmp_dir"' EXIT INT TERM
+    trap 'rm -rf "${tmp_dir:-}"' EXIT INT TERM
     git clone --quiet --depth 1 --branch "$AGY_BRANCH" "$AGY_REPO_URL" "$tmp_dir/repo" || return 1
     (cd "$tmp_dir/repo" && AGY_USE_CWD_SOURCE=1 bash ./install.sh)
 }
@@ -978,7 +978,7 @@ agy_remove_legacy_control_shims() {
     done
 }
 
-agy_uninstall() {
+agy_remove() {
     local yes=0 arg answer
     for arg in "$@"; do
         case "$arg" in
@@ -986,8 +986,8 @@ agy_uninstall() {
                 yes=1
                 ;;
             *)
-                printf 'agy uninstall: unknown option: %s\n' "$arg" >&2
-                printf 'usage: agy uninstall --yes\n' >&2
+                printf 'agy remove: unknown option: %s\n' "$arg" >&2
+                printf 'usage: agy remove --yes\n' >&2
                 return 2
                 ;;
         esac
@@ -999,15 +999,15 @@ agy_uninstall() {
             read -r answer || answer=""
             case "$answer" in
                 y|Y|yes|YES) ;;
-                *) printf 'agy uninstall: cancelled.\n' >&2; return 1 ;;
+                *) printf 'agy remove: cancelled.\n' >&2; return 1 ;;
             esac
         else
-            printf 'agy uninstall: refusing to uninstall without --yes in a non-interactive shell.\n' >&2
+            printf 'agy remove: refusing to remove without --yes in a non-interactive shell.\n' >&2
             return 2
         fi
     fi
 
-    printf 'agy uninstall: removing managed Termux runtime files...\n' >&2
+    printf 'agy remove: removing managed Termux runtime files...\n' >&2
     agy_remove_managed_launcher "$AGY_PREFIX/bin/agy"
     agy_remove_legacy_control_shims
     agy_remove_tree "$AGY_NATIVE_ROOT"
@@ -1016,7 +1016,7 @@ agy_uninstall() {
     agy_remove_rc_path_block "$AGY_HOME/.profile"
     agy_remove_rc_path_block "$AGY_HOME/.bashrc"
     agy_remove_rc_path_block "$AGY_HOME/.zshrc"
-    printf 'agy uninstall: completed. OAuth/user Antigravity config outside the managed runtime was not removed.\n' >&2
+    printf 'agy remove: completed. OAuth/user Antigravity config outside the managed runtime was not removed.\n' >&2
 }
 
 agy_mark_raw_changed() {
@@ -1098,7 +1098,7 @@ agy_doctor() {
     fi
 
     if agy_needs_repatch; then
-        agy_doctor_warn 'state/runtime drift detected; run agy install'
+        agy_doctor_warn 'state/runtime drift detected; run agy setup'
     else
         agy_doctor_ok 'state matches current raw/runtime hashes'
     fi
@@ -1116,9 +1116,9 @@ agy_main() {
     mode="$(agy_mode_for_args "$first")"
 
     case "$mode" in
-        install)
+        setup)
             shift || true
-            agy_bootstrap_install
+            agy_bootstrap_setup
             return $?
             ;;
         update)
@@ -1126,9 +1126,9 @@ agy_main() {
             agy_update_broker explicit
             return $?
             ;;
-        uninstall)
+        remove)
             shift || true
-            agy_uninstall "$@"
+            agy_remove "$@"
             return $?
             ;;
         doctor)

@@ -20,12 +20,12 @@ usable.
 | Command | Role |
 | :--- | :--- |
 | `agy` | Normal CLI entrypoint. Bare execution performs light preflight and may refresh the upstream binary when needed. |
-| `agy install` | Refresh managed launcher/support files from `main` and ensure raw/runtime are ready. |
+| `agy setup` | Refresh managed launcher/support files from `main` and ensure raw/runtime are ready. |
 | `agy update` | Update the official upstream `agy` binary only. |
 | `agy doctor` | Check PATH, launcher, raw/runtime, loader, resolver, CA, and state. |
 | `agy info` | Print compact upstream and wrapper version info. |
 | `agy version` | Print the upstream `agy --version` output only. |
-| `agy uninstall --yes` | Remove the managed launcher, runtime, raw copy, state, and legacy shims. |
+| `agy remove --yes` | Remove the managed launcher, runtime, raw copy, state, and legacy shims. |
 
 ## Files
 
@@ -47,15 +47,15 @@ $PREFIX/bin/agy
 - No repo-pinned verified version file is shipped. Verified version state is
   recorded locally after successful runs.
 - `agy update` is the only upstream binary update path.
-- `agy install` is the recovery path for launcher/support refresh and runtime
+- `agy setup` is the recovery path for launcher/support refresh and runtime
   re-ensuring.
 
 ## Troubleshooting
 
 1. Run `agy doctor`.
-2. If launcher/support files are stale or missing, run `agy install`.
+2. If launcher/support files are stale or missing, run `agy setup`.
 3. If the upstream binary itself needs updating, run `agy update`.
-4. If uninstalling, use `agy uninstall --yes`.
+4. If removing, use `agy remove --yes`.
 
 ## Guides
 

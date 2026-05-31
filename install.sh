@@ -7,7 +7,7 @@ AGY_USE_CWD_SOURCE="${AGY_USE_CWD_SOURCE:-0}"
 AGY_REQUIRED_PACKAGES="${AGY_REQUIRED_PACKAGES:-git curl python tar patchelf coreutils ca-certificates proot}"
 AGY_GLIBC_REPO_PACKAGE="${AGY_GLIBC_REPO_PACKAGE:-glibc-repo}"
 AGY_GLIBC_PACKAGES="${AGY_GLIBC_PACKAGES:-glibc glibc-runner}"
-AGY_LOG_PREFIX="agy install"
+AGY_LOG_PREFIX="agy setup"
 AGY_REPO_PATH=""
 AGY_TMP_DIR=""
 export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
@@ -87,10 +87,10 @@ prepare_repo() {
 
 verify_install() {
     if [ ! -x "$PREFIX/bin/agy" ] && [ ! -f "$PREFIX/bin/agy" ]; then
-        fail "launcher missing after install: $PREFIX/bin/agy"
+        fail "launcher missing after setup: $PREFIX/bin/agy"
     fi
-    AGY_SKIP_AUTO_UPDATE=1 "$PREFIX/bin/agy" info >/dev/null || fail 'agy info failed after install'
-    AGY_SKIP_AUTO_UPDATE=1 "$PREFIX/bin/agy" version >/dev/null || fail 'agy version failed after install'
+    AGY_SKIP_AUTO_UPDATE=1 "$PREFIX/bin/agy" info >/dev/null || fail 'agy info failed after setup'
+    AGY_SKIP_AUTO_UPDATE=1 "$PREFIX/bin/agy" version >/dev/null || fail 'agy version failed after setup'
 }
 
 main() {
@@ -100,8 +100,8 @@ main() {
     check_glibc
     say 'fetching'
     prepare_repo
-    say 'installing'
-    bash "$AGY_REPO_PATH/bin/install-runtime.sh" install
+    say 'setting up'
+    bash "$AGY_REPO_PATH/bin/install-runtime.sh" setup
     say 'verifying'
     verify_install
     say 'ok'

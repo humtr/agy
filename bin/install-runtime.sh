@@ -12,13 +12,13 @@ AGY_MANAGED_LAUNCHER_MARKER="${AGY_MANAGED_LAUNCHER_MARKER:-agy native managed l
 
 usage() {
     cat <<'EOF'
-Usage: bash bin/install-runtime.sh [install|uninstall|doctor]
+Usage: bash bin/install-runtime.sh [setup|remove|doctor]
 
-Default action: install
+Default action: setup
 
 Actions:
-  install      Install managed launcher and runtime support, then ensure raw/runtime are ready.
-  uninstall    Remove managed launcher, runtime files, state, and legacy shims.
+  setup        Install managed launcher and runtime support, then ensure raw/runtime are ready.
+  remove       Remove managed launcher, runtime files, state, and legacy shims.
   doctor       Run the local installer/launcher diagnosis checks.
 
 This script never patches the official raw agy binary in place and never runs
@@ -146,7 +146,7 @@ agy_write_compiled_launcher() {
     chmod 755 "$AGY_PUBLIC_LAUNCHER"
 }
 
-agy_install_support_files() {
+agy_setup_support_files() {
     local wrapper_commit
     mkdir -p "$AGY_RUNTIME_DIR" "$AGY_STATE_DIR"
     cp "$ROOT_DIR/lib/agy-termux-lib.sh" "$AGY_RUNTIME_DIR/lib.sh"
@@ -171,7 +171,7 @@ EOF
     agy_write_managed_shell
 }
 
-agy_install_launcher() {
+agy_setup_launcher() {
     if agy_launcher_available; then
         agy_write_compiled_launcher
     else
@@ -179,40 +179,40 @@ agy_install_launcher() {
     fi
 }
 
-agy_ensure_runtime() {
+agy_setup_runtime() {
     if [ ! -x "$AGY_RAW" ]; then
         agy_update_broker explicit
         return $?
     fi
     if ! agy_validate_patched || agy_needs_repatch; then
-        agy_rebuild_runtime install
+        agy_rebuild_runtime setup
         return $?
     fi
     return 0
 }
 
-agy_install() {
-    agy_install_support_files
-    agy_install_launcher
+agy_setup() {
+    agy_setup_support_files
+    agy_setup_launcher
     agy_remove_legacy_control_shims
     agy_remove_rc_path_block "$HOME/.profile"
     agy_remove_rc_path_block "$HOME/.bashrc"
     agy_remove_rc_path_block "$HOME/.zshrc"
-    agy_ensure_runtime
+    agy_setup_runtime
     agy_prune_backups
-    printf 'installed %s\n' "$AGY_PUBLIC_LAUNCHER"
+    printf 'setup %s\n' "$AGY_PUBLIC_LAUNCHER"
 }
 
-agy_do_uninstall() {
-    agy_uninstall --yes
+agy_do_remove() {
+    agy_remove --yes
 }
 
-case "${1:-install}" in
-    install)
-        agy_install
+case "${1:-setup}" in
+    setup)
+        agy_setup
         ;;
-    uninstall)
-        agy_do_uninstall
+    remove)
+        agy_do_remove
         ;;
     doctor)
         agy_doctor

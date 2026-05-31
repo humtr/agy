@@ -60,9 +60,9 @@ static struct route decide_route(int argc, char **argv) {
     if (argc < 2) return (struct route){ROUTE_MANAGED_SHELL, "bare entrypoint"};
     if (streq(argv[1], "--")) return (struct route){ROUTE_UPSTREAM, "explicit passthrough"};
     if (argv[1][0] == '-') return (struct route){ROUTE_UPSTREAM, "leading option passthrough"};
-    if (streq(argv[1], "install")) return (struct route){ROUTE_MANAGED_SHELL, "install route"};
+    if (streq(argv[1], "setup")) return (struct route){ROUTE_MANAGED_SHELL, "setup route"};
     if (streq(argv[1], "update")) return (struct route){ROUTE_MANAGED_SHELL, "update route"};
-    if (streq(argv[1], "uninstall")) return (struct route){ROUTE_MANAGED_SHELL, "uninstall route"};
+    if (streq(argv[1], "remove")) return (struct route){ROUTE_MANAGED_SHELL, "remove route"};
     if (streq(argv[1], "doctor")) return (struct route){ROUTE_MANAGED_SHELL, "doctor route"};
     if (streq(argv[1], "info")) return (struct route){ROUTE_MANAGED_SHELL, "info route"};
     if (streq(argv[1], "version")) return (struct route){ROUTE_UPSTREAM, "version passthrough"};
