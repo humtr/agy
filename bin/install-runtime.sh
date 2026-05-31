@@ -200,7 +200,7 @@ agy_setup() {
     agy_remove_rc_path_block "$HOME/.zshrc"
     agy_setup_runtime
     agy_prune_backups
-    printf 'setup %s\n' "$AGY_PUBLIC_LAUNCHER"
+    agy_print_version_summary "$(agy_current_version 2>/dev/null || true)"
 }
 
 agy_do_remove() {

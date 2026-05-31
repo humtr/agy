@@ -9,11 +9,11 @@ managed shell path or execute the patched Linux ARM64 runtime directly.
 | Input | Route |
 | :--- | :--- |
 | bare `agy` | managed shell path for light preflight and update check |
-| `agy setup` | managed shell path for launcher/support refresh |
-| `agy update` | managed shell path for the Termux-safe binary update pipeline |
+| `agy setup` | managed shell path for launcher/support refresh and version summary |
+| `agy update` | managed shell path for the Termux-safe binary update pipeline and version summary |
 | `agy doctor` | managed shell path for diagnostics |
 | `agy remove` | managed shell path for cleanup/removal |
-| `agy version` | managed shell path for upstream version plus wrapper version output |
+| `agy version` | managed shell path for agy/wrapper version rows |
 | leading-option commands such as `agy --print` | upstream passthrough |
 | all other subcommands | upstream passthrough |
 

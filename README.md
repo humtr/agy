@@ -20,10 +20,10 @@ usable.
 | Command | Role |
 | :--- | :--- |
 | `agy` | Normal CLI entrypoint. Bare execution performs light preflight and may refresh the upstream binary when needed. |
-| `agy setup` | Refresh managed launcher/support files from `main` and ensure raw/runtime are ready. |
-| `agy update` | Update the official upstream `agy` binary only. |
+| `agy setup` | Refresh managed launcher/support files from `main`, ensure raw/runtime are ready, and print agy/wrapper versions. |
+| `agy update` | Update the official upstream `agy` binary only, then print agy/wrapper versions. |
 | `agy doctor` | Check PATH, launcher, raw/runtime, loader, resolver, CA, and state. |
-| `agy version` | Print the upstream version, then the wrapper version on the next line. |
+| `agy version` | Print `agy` and `wrapper` version rows. |
 | `agy remove --yes` | Remove the managed launcher, runtime, raw copy, state, and obsolete shims. |
 
 ## Files

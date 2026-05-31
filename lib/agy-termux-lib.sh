@@ -557,19 +557,23 @@ agy_mark_verified_version() {
     agy_write_state
 }
 
-agy_version_report() {
-    local upstream wrapper_version wrapper_commit status
+agy_print_version_summary() {
+    local upstream="${1:-}" wrapper_version
     agy_reload_wrapper_version
+    wrapper_version="${AGY_WRAPPER_VERSION:-unknown}"
+    printf '%-8s %s\n' agy "${upstream:-unknown}"
+    printf '%-8s %s\n' wrapper "$wrapper_version"
+}
+
+agy_version_report() {
+    local upstream status
     set +e
     upstream="$(agy_runtime_command "$AGY_PATCHED" --version 2>/dev/null)"
     status=$?
     set -e
     upstream="$(printf '%s\n' "$upstream" | sed -n '1p')"
     [ "$status" -eq 0 ] || return "$status"
-    wrapper_version="${AGY_WRAPPER_VERSION:-unknown}"
-    wrapper_commit="${AGY_WRAPPER_COMMIT:-unknown}"
-    printf '%s\n' "${upstream:-unknown}"
-    printf 'wrapper   %s (%s)\n' "$wrapper_version" "$wrapper_commit"
+    agy_print_version_summary "$upstream"
     agy_mark_verified_version "$upstream"
 }
 
@@ -1119,7 +1123,8 @@ agy_main() {
             ;;
         update)
             agy_preflight || return $?
-            agy_update_broker explicit
+            agy_update_broker explicit || return $?
+            agy_version_report
             return $?
             ;;
         remove)
