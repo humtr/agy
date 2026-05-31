@@ -561,8 +561,8 @@ agy_print_version_summary() {
     local upstream="${1:-}" wrapper_version
     agy_reload_wrapper_version
     wrapper_version="${AGY_WRAPPER_VERSION:-unknown}"
-    printf '%-8s %s\n' agy "${upstream:-unknown}"
-    printf '%-8s %s\n' wrapper "$wrapper_version"
+    printf '%-8s : %s\n' agy "${upstream:-unknown}"
+    printf '%-8s : %s\n' wrapper "$wrapper_version"
 }
 
 agy_version_report() {
