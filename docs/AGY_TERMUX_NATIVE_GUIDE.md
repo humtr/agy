@@ -9,14 +9,17 @@ Termux-managed runtime with a single public launcher at `$PREFIX/bin/agy`.
 | :--- | :--- |
 | `agy` | Normal CLI entrypoint. Bare execution performs light preflight and may refresh the upstream binary when needed. |
 | `agy help` | Show native help first, then wrapper help below it. |
+| `agy profile` | List available profiles or enter one by name. |
+| `agy profile NAME` | Enter the named profile and run the bare CLI in that profile home. |
 | `agy setup` | Refresh managed launcher/support files from `main`, ensure raw/runtime are ready, and print `agy :` / `wrapper :` version rows. |
 | `agy update` | Termux-safe official binary update pipeline, then print `agy :` / `wrapper :` version rows. |
 | `agy doctor` | Local diagnostics for PATH, launcher, runtime, resolver, CA, and state. |
 | `agy version` | Print `agy :` and `wrapper :` version rows. |
 | `agy remove` | Remove the managed launcher, runtime/raw files, state, and obsolete shims. |
 
-Do not add a second public control command. Obsolete helper paths are removed
-during setup and remove cleanup.
+Do not add a second public lifecycle command. `agy profile` is a selector
+entrypoint, not a management command. Obsolete helper paths are removed during
+setup and remove cleanup.
 
 ## Filesystem layout
 
@@ -34,6 +37,9 @@ during setup and remove cleanup.
 ~/.local/lib/agy/native/runtime/build-runtime.py
 ~/.local/lib/agy/native/runtime/wrapper-version.env
   Installed runtime support files.
+
+~/.agy-profiles/
+  Optional profile home roots used by `agy profile NAME`.
 
 $PREFIX/bin/agy
   Public entrypoint. Prefer a compiled Bionic launcher; use shell fallback when
@@ -121,6 +127,13 @@ user-driven:
 ```bash
 agy auth login
 ```
+
+## Profiles
+
+`agy profile` is a profile selector and entrypoint, not a management command.
+It lists profile names from `~/.agy-profiles/` and can enter a named profile by
+setting `AGY_PROFILE_HOME` for the bare runtime. It does not create, rename, or
+delete profile directories.
 
 Do not paste OAuth callback URLs, codes, cookies, or tokens into diagnostic logs.
 Generated diagnostic cases are local files and are not sent to external tools by

@@ -21,6 +21,8 @@ usable.
 | :--- | :--- |
 | `agy` | Normal CLI entrypoint. Bare execution performs light preflight and may refresh the upstream binary when needed. |
 | `agy help` | Show native help first, then wrapper help below it. |
+| `agy profile` | List available profiles or enter one by name. |
+| `agy profile NAME` | Enter the named profile and run the bare CLI in that profile home. |
 | `agy setup` | Refresh managed launcher/support files from `main`, ensure raw/runtime are ready, and print `agy :` / `wrapper :` version rows. |
 | `agy update` | Update the official upstream `agy` binary only, then print `agy :` / `wrapper :` version rows. |
 | `agy doctor` | Check PATH, launcher, raw/runtime, loader, resolver, CA, and state. |
@@ -37,6 +39,7 @@ usable.
 ~/.local/lib/agy/native/runtime/build-runtime.py
 ~/.local/lib/agy/native/runtime/wrapper-version.env
 ~/.local/share/agy/native/state.json
+~/.agy-profiles/
 $PREFIX/bin/agy
 ```
 
@@ -46,6 +49,9 @@ $PREFIX/bin/agy
 - The managed launcher lives at `$PREFIX/bin/agy`; no extra PATH shim is created.
 - No repo-pinned verified version file is shipped. The last successful bare
   `agy` runtime tuple is recorded locally after a normal exit.
+- `AGY_PROFILE_HOME` can redirect the runtime auth/session home for
+  `agy profile NAME`; profile directories live under `~/.agy-profiles/` by
+  default.
 - `agy update` is the only upstream binary update path.
 - `agy setup` is the recovery path for launcher/support refresh and runtime
   re-ensuring.
@@ -54,8 +60,10 @@ $PREFIX/bin/agy
 
 1. Run `agy doctor`.
 2. If launcher/support files are stale or missing, run `agy setup`.
-3. If the upstream binary itself needs updating, run `agy update`.
-4. If removing, use `agy remove`.
+3. If you want a separate auth/session home, create a directory under
+   `~/.agy-profiles/` and use `agy profile NAME`.
+4. If the upstream binary itself needs updating, run `agy update`.
+5. If removing, use `agy remove`.
 
 ## Guides
 

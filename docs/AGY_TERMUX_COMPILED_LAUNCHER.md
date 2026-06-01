@@ -10,6 +10,8 @@ managed shell path or execute the patched Linux ARM64 runtime directly.
 | :--- | :--- |
 | bare `agy` | managed shell path for light preflight and update check |
 | `agy help` | managed shell path for native help plus wrapper help summary |
+| `agy profile` | managed shell path for profile listing and profile entry |
+| `agy profile NAME` | managed shell path for profile entry |
 | `agy setup` | managed shell path for launcher/support refresh and `agy :` / `wrapper :` version rows |
 | `agy update` | managed shell path for the Termux-safe binary update pipeline and `agy :` / `wrapper :` version rows |
 | `agy doctor` | managed shell path for diagnostics |

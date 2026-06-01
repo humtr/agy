@@ -34,6 +34,8 @@ AGY_BRANCH="${AGY_BRANCH:-main}"
 AGY_MANAGED_LAUNCHER_MARKER="${AGY_MANAGED_LAUNCHER_MARKER:-agy native managed launcher}"
 AGY_MANIFEST_URL="${AGY_MANIFEST_URL:-https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_arm64.json}"
 AGY_AUTO_UPDATE_TIMEOUT="${AGY_AUTO_UPDATE_TIMEOUT:-4}"
+AGY_PROFILE_ROOT="${AGY_PROFILE_ROOT:-$HOME/.agy-profiles}"
+AGY_PROFILE_HOME="${AGY_PROFILE_HOME:-}"
 agy_sha256() {
     [ -f "$1" ] || return 0
     sha256sum "$1" 2>/dev/null | awk '{print $1}'
@@ -226,16 +228,18 @@ agy_runtime_command() {
     local cert_dir_env=()
     local runtime_env=()
     local executable
+    local run_home
     executable="$1"
     shift
+    run_home="${AGY_PROFILE_HOME:-$HOME}"
     if [ -d "$AGY_CERT_DIR" ]; then
         cert_dir_env=("SSL_CERT_DIR=$AGY_CERT_DIR")
     fi
     runtime_env=(env -u LD_PRELOAD -u LD_LIBRARY_PATH \
-        HOME="$AGY_HOME" \
-        XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$AGY_HOME/.config}" \
-        XDG_CACHE_HOME="${XDG_CACHE_HOME:-$AGY_HOME/.cache}" \
-        XDG_DATA_HOME="${XDG_DATA_HOME:-$AGY_HOME/.local/share}" \
+        HOME="$run_home" \
+        XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$run_home/.config}" \
+        XDG_CACHE_HOME="${XDG_CACHE_HOME:-$run_home/.cache}" \
+        XDG_DATA_HOME="${XDG_DATA_HOME:-$run_home/.local/share}" \
         GODEBUG="${GODEBUG:-netdns=go}" \
         SSL_CERT_FILE="$AGY_CERT_FILE" \
         "${cert_dir_env[@]}")
@@ -257,6 +261,151 @@ agy_run_candidate() {
     shift
     agy_load_state
     agy_runtime_command "$candidate" "$@"
+}
+
+agy_profile_validate_name() {
+    local profile="${1:-}"
+    case "$profile" in
+        ""|default)
+            return 0
+            ;;
+        native|-*|.*|*/*|*..*|*[[:space:]]*)
+            return 1
+            ;;
+    esac
+    return 0
+}
+
+agy_profile_root() {
+    printf '%s\n' "${AGY_PROFILE_ROOT:-$HOME/.agy-profiles}"
+}
+
+agy_profile_dir() {
+    local profile="${1:-}"
+    printf '%s/%s\n' "$(agy_profile_root)" "$profile"
+}
+
+agy_list_profiles() {
+    local root
+    root="$(agy_profile_root)"
+    [ -d "$root" ] || return 0
+    find "$root" -mindepth 1 -maxdepth 1 -type d 2>/dev/null \
+        | sed -n 's#.*/##p' \
+        | grep -Ev '^(default|native)$' \
+        | grep -Ev '^[.]' \
+        | LC_ALL=C sort -f
+}
+
+agy_prompt_choice() {
+    local prompt="${1:-profile> }"
+    printf '%s' "$prompt" >&2
+    read -r reply || return 1
+    printf '%s\n' "$reply"
+}
+
+agy_run_bare_runtime() {
+    local first="${1:-}"
+    local before after temp_raw exit_code case_dir
+    agy_light_preflight || return $?
+    agy_auto_update "$first" || return $?
+    before=$(agy_sha256 "$AGY_RAW")
+    temp_raw="${TMPDIR:-/tmp}/agy_raw_$$"
+    : >"$temp_raw"
+    set +e
+    agy_load_state
+    agy_runtime_command "$AGY_PATCHED" "$@" 2> >(tee "$temp_raw" >&2)
+    exit_code=$?
+    set -e
+    after=$(agy_sha256 "$AGY_RAW")
+    if [ -n "$before" ] && [ -n "$after" ] && [ "$before" != "$after" ]; then
+        agy_mark_raw_changed
+        printf 'agy: raw changed during execution; rebuilding runtime copy.\n' >&2
+        agy_rebuild_runtime postflight-update
+    fi
+    if [ "$exit_code" -eq 0 ]; then
+        agy_mark_runtime_success "$(agy_current_version 2>/dev/null || true)"
+    fi
+    if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 130 ]; then
+        case_dir=$(agy_make_case "$exit_code" "$temp_raw")
+        printf 'agy failed with status %s.\n' "$exit_code" >&2
+        printf 'Termux diagnostic case created:\n  %s\n' "$case_dir" >&2
+        printf 'Next:\n  agy doctor\n' >&2
+    fi
+    rm -f "$temp_raw"
+    return "$exit_code"
+}
+
+agy_profile_run() {
+    local profile="${1:-}"
+    shift || true
+    local profile_dir
+    if [ -z "$profile" ]; then
+        agy_profile_select
+        return $?
+    fi
+    if ! agy_profile_validate_name "$profile"; then
+        printf 'agy profile: invalid profile name: %s\n' "$profile" >&2
+        return 2
+    fi
+    if [ "$#" -ne 0 ]; then
+        printf 'agy profile: unexpected argument: %s\n' "$1" >&2
+        printf 'usage: agy profile [NAME]\n' >&2
+        return 2
+    fi
+    profile_dir="$(agy_profile_dir "$profile")"
+    if [ ! -d "$profile_dir" ]; then
+        printf 'agy profile: profile not found: %s\n' "$profile" >&2
+        printf 'create it first: mkdir -p %s\n' "$profile_dir" >&2
+        return 2
+    fi
+    AGY_PROFILE_HOME="$profile_dir" agy_run_bare_runtime
+}
+
+agy_profile_select() {
+    local root profiles profile choice i
+    root="$(agy_profile_root)"
+    mapfile -t profiles < <(agy_list_profiles)
+    if [ "${#profiles[@]}" -eq 0 ]; then
+        printf 'agy profile: no profiles found in %s\n' "$root" >&2
+        return 0
+    fi
+    printf 'profiles\n'
+    for profile in "${profiles[@]}"; do
+        printf '  %s\n' "$profile"
+    done
+    if [ ! -t 0 ]; then
+        return 0
+    fi
+    choice="$(agy_prompt_choice)" || return 1
+    case "$choice" in
+        "")
+            printf 'agy profile: cancelled.\n' >&2
+            return 1
+            ;;
+        *[!0-9]*)
+            for profile in "${profiles[@]}"; do
+                if [ "$choice" = "$profile" ]; then
+                    AGY_PROFILE_HOME="$(agy_profile_dir "$profile")" agy_run_bare_runtime
+                    return $?
+                fi
+            done
+            printf 'agy profile: unknown profile: %s\n' "$choice" >&2
+            return 2
+            ;;
+    esac
+    i="$choice"
+    case "$i" in
+        *[!0-9]*|"")
+            printf 'agy profile: invalid selection: %s\n' "$choice" >&2
+            return 2
+            ;;
+    esac
+    if [ "$i" -lt 1 ] || [ "$i" -gt "${#profiles[@]}" ]; then
+        printf 'agy profile: invalid selection: %s\n' "$choice" >&2
+        return 2
+    fi
+    profile="${profiles[$((i - 1))]}"
+    AGY_PROFILE_HOME="$(agy_profile_dir "$profile")" agy_run_bare_runtime
 }
 
 agy_build_runtime_candidate() {
@@ -534,6 +683,10 @@ agy_mode_for_args() {
             printf 'doctor\n'
             return 0
             ;;
+        profile)
+            printf 'profile\n'
+            return 0
+            ;;
         version)
             printf 'version\n'
             return 0
@@ -607,6 +760,7 @@ agy_wrapper_help() {
     printf '  %-8s  %s\n' 'agy' 'Managed entrypoint; bare execution performs light preflight and may refresh the upstream binary.'
     printf '  %-8s  %s\n' 'setup' 'Refresh launcher/support files and ensure raw/runtime are ready.'
     printf '  %-8s  %s\n' 'update' 'Update the official upstream binary only.'
+    printf '  %-8s  %s\n' 'profile' 'List profiles or enter a named profile.'
     printf '  %-8s  %s\n' 'doctor' 'Check PATH, launcher, runtime, resolver, CA, and state.'
     printf '  %-8s  %s\n' 'version' 'Print `agy :` and `wrapper :` version rows.'
     printf '  %-8s  %s\n' 'remove' 'Remove the managed launcher, runtime, raw copy, state, and obsolete shims.'
@@ -1168,7 +1322,6 @@ agy_doctor() {
 agy_main() {
     local first="${1:-}"
     local mode
-    local before after temp_raw exit_code case_dir
 
     mode="$(agy_mode_for_args "$first")"
 
@@ -1182,6 +1335,11 @@ agy_main() {
             agy_preflight || return $?
             agy_update_broker explicit || return $?
             agy_version_report
+            return $?
+            ;;
+        profile)
+            shift || true
+            agy_profile_run "$@"
             return $?
             ;;
         remove)
@@ -1211,33 +1369,8 @@ agy_main() {
     esac
 
     if [ "$mode" = "bare" ]; then
-        agy_light_preflight || return $?
-        agy_auto_update "$first" || return $?
-        before=$(agy_sha256 "$AGY_RAW")
-        temp_raw="${TMPDIR:-/tmp}/agy_raw_$$"
-        : >"$temp_raw"
-        set +e
-        agy_load_state
-        agy_runtime_command "$AGY_PATCHED" "$@" 2> >(tee "$temp_raw" >&2)
-        exit_code=$?
-        set -e
-        after=$(agy_sha256 "$AGY_RAW")
-        if [ -n "$before" ] && [ -n "$after" ] && [ "$before" != "$after" ]; then
-            agy_mark_raw_changed
-            printf 'agy: raw changed during execution; rebuilding runtime copy.\n' >&2
-            agy_rebuild_runtime postflight-update
-        fi
-        if [ "$exit_code" -eq 0 ]; then
-            agy_mark_runtime_success "$(agy_current_version 2>/dev/null || true)"
-        fi
-        if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 130 ]; then
-            case_dir=$(agy_make_case "$exit_code" "$temp_raw")
-            printf 'agy failed with status %s.\n' "$exit_code" >&2
-            printf 'Termux diagnostic case created:\n  %s\n' "$case_dir" >&2
-            printf 'Next:\n  agy doctor\n' >&2
-        fi
-        rm -f "$temp_raw"
-        return "$exit_code"
+        agy_run_bare_runtime "$@"
+        return $?
     fi
 
     agy_cheap_launch_guard || return $?
