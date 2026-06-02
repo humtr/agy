@@ -45,6 +45,135 @@ AGY_REMOTE_CANDIDATE_LIMIT="${AGY_REMOTE_CANDIDATE_LIMIT:-10}"
 AGY_PROFILE_ROOT="${AGY_PROFILE_ROOT:-$HOME/.agy-profiles}"
 AGY_PROFILE_HOME="${AGY_PROFILE_HOME:-}"
 
+# ANSI Color & Formatting Variables
+agy_init_terminal_colors() {
+    if [ -t 1 ] || [ -t 2 ]; then
+        T_RESET=$'\e[0m'
+        T_BOLD=$'\e[1m'
+        T_DIM=$'\e[2m'
+        T_UNDERLINE=$'\e[4m'
+        
+        T_RED=$'\e[31m'
+        T_GREEN=$'\e[32m'
+        T_YELLOW=$'\e[33m'
+        T_BLUE=$'\e[34m'
+        T_MAGENTA=$'\e[35m'
+        T_CYAN=$'\e[36m'
+        T_WHITE=$'\e[37m'
+        T_GRAY=$'\e[90m'
+        
+        C_HEADER="${T_BOLD}${T_CYAN}"
+        C_TITLE="${T_BOLD}${T_WHITE}"
+        C_MUTED="${T_DIM}${T_GRAY}"
+        C_NUMBER="${T_BOLD}${T_MAGENTA}"
+        C_LABEL="${T_WHITE}"
+        C_BORDER="${T_CYAN}"
+        C_PROMPT="${T_BOLD}${T_BLUE}"
+        
+        # Tags / Badges
+        C_TAG_PREFERRED="${T_BOLD}${T_GREEN}"
+        C_TAG_VERIFIED="${T_BOLD}${T_CYAN}"
+        C_TAG_SMOKE="${T_YELLOW}"
+        C_TAG_CACHED="${T_GRAY}"
+        C_TAG_BUILD="${T_MAGENTA}"
+        C_TAG_REMOTE="${T_BLUE}"
+    else
+        T_RESET=""
+        T_BOLD=""
+        T_DIM=""
+        T_UNDERLINE=""
+        
+        T_RED=""
+        T_GREEN=""
+        T_YELLOW=""
+        T_BLUE=""
+        T_MAGENTA=""
+        T_CYAN=""
+        T_WHITE=""
+        T_GRAY=""
+        
+        C_HEADER=""
+        C_TITLE=""
+        C_MUTED=""
+        C_NUMBER=""
+        C_LABEL=""
+        C_BORDER=""
+        C_PROMPT=""
+        
+        C_TAG_PREFERRED=""
+        C_TAG_VERIFIED=""
+        C_TAG_SMOKE=""
+        C_TAG_CACHED=""
+        C_TAG_BUILD=""
+        C_TAG_REMOTE=""
+    fi
+}
+# Initialize colors immediately
+agy_init_terminal_colors
+
+# Beautiful Box Header
+agy_print_header() {
+    local title="$1"
+    local subtitle="${2:-}"
+    local width=52
+    
+    printf '  %s╭%s╮%s\n' "${C_BORDER}" "$(printf '─%.0s' $(seq 1 $width))" "${T_RESET}" >&2
+    
+    # Calculate title padding
+    local title_len=${#title}
+    local title_pad_right=$((width - title_len - 3))
+    if [ $title_pad_right -lt 0 ]; then title_pad_right=0; fi
+    printf '  %s│  %s%s%s%s│%s\n' "${C_BORDER}" "${C_HEADER}" "${title}" "${T_RESET}" "$(printf ' %.0s' $(seq 1 $title_pad_right))" "${C_BORDER}${T_RESET}" >&2
+    
+    if [ -n "$subtitle" ]; then
+        local sub_len=${#subtitle}
+        local sub_pad_right=$((width - sub_len - 3))
+        if [ $sub_pad_right -lt 0 ]; then sub_pad_right=0; fi
+        printf '  %s│  %s%s%s%s│%s\n' "${C_BORDER}" "${C_MUTED}" "${subtitle}" "${T_RESET}" "$(printf ' %.0s' $(seq 1 $sub_pad_right))" "${C_BORDER}${T_RESET}" >&2
+    fi
+    
+    printf '  %s╰%s╯%s\n' "${C_BORDER}" "$(printf '─%.0s' $(seq 1 $width))" "${T_RESET}" >&2
+}
+
+# Beautiful tag formatter
+agy_format_flags() {
+    local raw_flags="$1"
+    local formatted=""
+    
+    if [ -z "$T_RESET" ]; then
+        printf ' [%s]' "${raw_flags//,/] [}"
+        return 0
+    fi
+    
+    local IFS=',' flag
+    for flag in $raw_flags; do
+        case "$flag" in
+            preferred)
+                formatted="${formatted} ${C_TAG_PREFERRED}🟢 preferred${T_RESET}"
+                ;;
+            verified)
+                formatted="${formatted} ${C_TAG_VERIFIED}✅ verified${T_RESET}"
+                ;;
+            smoke)
+                formatted="${formatted} ${C_TAG_SMOKE}⚡ tested${T_RESET}"
+                ;;
+            cached)
+                formatted="${formatted} ${C_TAG_CACHED}📦 cached${T_RESET}"
+                ;;
+            build)
+                formatted="${formatted} ${C_TAG_BUILD}🛠️ build${T_RESET}"
+                ;;
+            remote)
+                formatted="${formatted} ${C_TAG_REMOTE}🌐 remote${T_RESET}"
+                ;;
+            *)
+                formatted="${formatted} ${T_DIM}[${flag}]${T_RESET}"
+                ;;
+        esac
+    done
+    printf '%s' "$formatted"
+}
+
 agy_registry_default_json() {
     printf '{"schema":1,"raw":{},"runtime":{},"wrapper":{}}\n'
 }
@@ -405,7 +534,29 @@ agy_compact_runtime_label() {
     short_commit="${wrapper_commit:-unknown}"
     short_commit="${short_commit:0:6}"
     [ -n "$short_commit" ] || short_commit="unknown"
-    printf 'agy %s  wrapper %s (%s)' "$raw_version" "$wrapper_version" "$short_commit"
+    
+    # Format the wrapper version (YYMMDD.NN) into a clean date (20YY-MM-DD)
+    local formatted_wrapper="$wrapper_version"
+    if [[ "$wrapper_version" =~ ^([0-9]{2})([0-9]{2})([0-9]{2})\.[0-9]+$ ]]; then
+        formatted_wrapper="20${BASH_REMATCH[1]}-${BASH_REMATCH[2]}-${BASH_REMATCH[3]}"
+    elif [[ "$wrapper_version" =~ ^([0-9]{2})([0-9]{2})([0-9]{2})$ ]]; then
+        formatted_wrapper="20${BASH_REMATCH[1]}-${BASH_REMATCH[2]}-${BASH_REMATCH[3]}"
+    fi
+
+    if [ -n "$T_RESET" ]; then
+        printf 'agy %s%s%s / %s%s%s' \
+            "${T_BOLD}${T_WHITE}" "$raw_version" "${T_RESET}" \
+            "${C_MUTED}" "$formatted_wrapper" "${T_RESET}"
+        if [ "$short_commit" != "unknown" ]; then
+            printf ' %s(%s)%s' "${T_DIM}" "$short_commit" "${T_RESET}"
+        fi
+    else
+        if [ "$short_commit" != "unknown" ]; then
+            printf 'agy %s / %s (%s)' "$raw_version" "$formatted_wrapper" "$short_commit"
+        else
+            printf 'agy %s / %s' "$raw_version" "$formatted_wrapper"
+        fi
+    fi
 }
 
 agy_registry_print_candidates() {
@@ -952,6 +1103,16 @@ agy_list_profiles() {
 
 agy_prompt_choice() {
     local prompt="${1:-profile> }" _max_items="${2:-9}" reply rest
+    
+    # Format the prompt with nice color and arrow if color is enabled
+    if [ -n "$T_RESET" ]; then
+        local styled_prompt="${prompt%> }"
+        styled_prompt="${styled_prompt% }"
+        prompt="  ${C_PROMPT}${styled_prompt} ❯ ${T_RESET}"
+    else
+        prompt="  ${prompt}"
+    fi
+    
     printf '%s' "$prompt" >&2
     if [ -t 0 ]; then
         local old_tty status
@@ -978,9 +1139,11 @@ agy_prompt_choice() {
             return 0
             ;;
         [1-9])
-            printf '%s\n' "$reply" >&2
-            printf '%s\n' "$reply"
-            return 0
+            if [ "$_max_items" -le 9 ]; then
+                printf '%s\n' "$reply" >&2
+                printf '%s\n' "$reply"
+                return 0
+            fi
             ;;
         *)
             ;;
@@ -1002,7 +1165,6 @@ agy_bare_resume_prompt() {
     fi
 
     agy_bare_print_resume_candidates >&2
-    printf '  choose number\n' >&2
     choice="$(agy_prompt_choice 'agy> ' 2)" || return $?
     case "$choice" in
         ""|"1"|"previous"|"prev"|"p"|"P")
@@ -1014,14 +1176,49 @@ agy_bare_resume_prompt() {
             return 0
             ;;
         $'\e')
-            printf 'agy: cancelled.\n' >&2
+            printf '  %sagy: cancelled.%s\n' "${C_MUTED}" "${T_RESET}" >&2
             return 130
             ;;
         *)
-            printf 'agy: invalid selection: %s\n' "$choice" >&2
+            printf '  %sagy: invalid selection: %s%s\n' "${T_RED}" "$choice" "${T_RESET}" >&2
             return 2
             ;;
     esac
+}
+
+agy_bare_print_resume_candidates() {
+    local raw_id wrapper_id raw_version wrapper_version wrapper_commit latest_raw_id latest_wrapper_id latest_raw_version latest_wrapper_version latest_wrapper_commit
+    agy_load_state
+    
+    agy_print_header "agy" "Resume or start new session"
+    
+    latest_raw_id="$(agy_registry_latest_raw_id)"
+    latest_wrapper_id="$(agy_registry_latest_wrapper_id)"
+    latest_raw_version="$(agy_registry_raw_field "$latest_raw_id" version)"
+    latest_wrapper_version="$(agy_registry_wrapper_field "$latest_wrapper_id" version)"
+    latest_wrapper_commit="$(agy_registry_wrapper_field "$latest_wrapper_id" commit)"
+    
+    if [ -n "${PREFERRED_TUPLE_ID:-}" ]; then
+        raw_id="$(agy_registry_runtime_field "$PREFERRED_TUPLE_ID" raw_id)"
+        wrapper_id="$(agy_registry_runtime_field "$PREFERRED_TUPLE_ID" wrapper_id)"
+        raw_version="$(agy_registry_raw_field "$raw_id" version)"
+        wrapper_version="$(agy_registry_wrapper_field "$wrapper_id" version)"
+        wrapper_commit="$(agy_registry_wrapper_field "$wrapper_id" commit)"
+        local prev_label
+        prev_label="$(agy_compact_runtime_label "$raw_version" "$wrapper_version" "$wrapper_commit")"
+        printf '  %s1.%s %s%-10s%s  %s\n' "${C_NUMBER}" "${T_RESET}" "${T_BOLD}" "previous" "${T_RESET}" "$prev_label"
+    else
+        printf '  %s1.%s %s%-10s%s  %sunavailable%s\n' "${C_NUMBER}" "${T_RESET}" "${T_BOLD}" "previous" "${T_RESET}" "${C_MUTED}" "${T_RESET}"
+    fi
+    
+    if [ -n "$latest_raw_id" ] && [ -n "$latest_wrapper_id" ]; then
+        local latest_label
+        latest_label="$(agy_compact_runtime_label "$latest_raw_version" "$latest_wrapper_version" "$latest_wrapper_commit")"
+        printf '  %s2.%s %s%-10s%s  %s\n' "${C_NUMBER}" "${T_RESET}" "${T_BOLD}" "latest" "${T_RESET}" "$latest_label"
+    else
+        printf '  %s2.%s %s%-10s%s  %srefresh wrapper and upstream binary%s\n' "${C_NUMBER}" "${T_RESET}" "${T_BOLD}" "latest" "${T_RESET}" "${C_MUTED}" "${T_RESET}"
+    fi
+    printf '\n' >&2
 }
 
 agy_use_prompt_selection() {
@@ -1034,32 +1231,6 @@ agy_use_prompt_selection() {
     choice="$(agy_prompt_choice 'agy use> ' "$max_items")" || return $?
     printf '%s\n' "$choice"
     return 0
-}
-
-agy_bare_print_resume_candidates() {
-    local raw_id wrapper_id raw_version wrapper_version wrapper_commit latest_raw_id latest_wrapper_id latest_raw_version latest_wrapper_version latest_wrapper_commit
-    agy_load_state
-    printf 'agy\n'
-    latest_raw_id="$(agy_registry_latest_raw_id)"
-    latest_wrapper_id="$(agy_registry_latest_wrapper_id)"
-    latest_raw_version="$(agy_registry_raw_field "$latest_raw_id" version)"
-    latest_wrapper_version="$(agy_registry_wrapper_field "$latest_wrapper_id" version)"
-    latest_wrapper_commit="$(agy_registry_wrapper_field "$latest_wrapper_id" commit)"
-    if [ -n "${PREFERRED_TUPLE_ID:-}" ]; then
-        raw_id="$(agy_registry_runtime_field "$PREFERRED_TUPLE_ID" raw_id)"
-        wrapper_id="$(agy_registry_runtime_field "$PREFERRED_TUPLE_ID" wrapper_id)"
-        raw_version="$(agy_registry_raw_field "$raw_id" version)"
-        wrapper_version="$(agy_registry_wrapper_field "$wrapper_id" version)"
-        wrapper_commit="$(agy_registry_wrapper_field "$wrapper_id" commit)"
-        printf '  1. previous  %s\n' "$(agy_compact_runtime_label "$raw_version" "$wrapper_version" "$wrapper_commit")"
-    else
-        printf '  1. previous  unavailable\n'
-    fi
-    if [ -n "$latest_raw_id" ] && [ -n "$latest_wrapper_id" ]; then
-        printf '  2. latest    %s\n' "$(agy_compact_runtime_label "$latest_raw_version" "$latest_wrapper_version" "$latest_wrapper_commit")"
-    else
-        printf '  2. latest    refresh wrapper and upstream binary\n'
-    fi
 }
 
 agy_run_bare_runtime() {
@@ -1089,6 +1260,9 @@ agy_run_bare_runtime() {
             agy_state_clear_preferred_tuple
             ;;
     esac
+    if [ "$bare_action" = "latest" ]; then
+        agy_refresh_wrapper_and_reexec_if_needed quiet "$@" || return $?
+    fi
     agy_auto_update "$first" || return $?
     before=$(agy_sha256 "$AGY_RAW")
     temp_raw="${TMPDIR:-/tmp}/agy_raw_$$"
@@ -1216,7 +1390,8 @@ agy_use_print_candidates() {
     latest_wrapper_version="$(agy_registry_wrapper_field "$latest_wrapper_id" version)"
     latest_wrapper_commit="$(agy_registry_wrapper_field "$latest_wrapper_id" commit)"
 
-    printf 'agy use\n'
+    agy_print_header "agy use" "Select native runtime configuration"
+
     while IFS=$'\t' read -r kind tuple_id raw_id wrapper_id raw_version wrapper_version wrapper_commit flags runtime_path; do
         [ -n "$tuple_id" ] || continue
         if [ "$interactive_limit" -gt 0 ] && [ "$count" -ge "$interactive_limit" ]; then
@@ -1225,7 +1400,9 @@ agy_use_print_candidates() {
         fi
         count=$((count + 1))
         label="$(agy_compact_runtime_label "$raw_version" "$wrapper_version" "$wrapper_commit")"
-        printf '  %2d. %s  %s\n' "$count" "$label" "$flags"
+        local badges
+        badges="$(agy_format_flags "$flags")"
+        printf '  %s%2d.%s %s %s\n' "${C_NUMBER}" "$count" "${T_RESET}" "$label" "$badges"
     done < <(agy_registry_print_candidates)
 
     while IFS=$'\t' read -r version manifest_url url sha512; do
@@ -1236,13 +1413,16 @@ agy_use_print_candidates() {
         fi
         count=$((count + 1))
         label="$(agy_compact_runtime_label "$version" "${latest_wrapper_version:-unknown}" "${latest_wrapper_commit:-unknown}")"
-        printf '  %2d. %s  remote\n' "$count" "$label"
+        local badges
+        badges="$(agy_format_flags "remote")"
+        printf '  %s%2d.%s %s %s\n' "${C_NUMBER}" "$count" "${T_RESET}" "$label" "$badges"
     done < <(agy_remote_raw_candidates)
 
     AGY_USE_MENU_COUNT="$count"
-    printf '  choose number\n'
     if [ "$truncated" -eq 1 ]; then
-        printf '  more: agy use VERSION\n'
+        printf '  %s(More options: %sagy use <version>%s)\n\n' "${C_MUTED}" "${T_UNDERLINE}" "${T_RESET}" >&2
+    else
+        printf '\n' >&2
     fi
 }
 
@@ -1372,7 +1552,7 @@ agy_use() {
         fi
         selection="$(agy_use_prompt_selection "${AGY_USE_MENU_COUNT:-0}")" || return $?
         if [ -z "$selection" ]; then
-            printf 'agy use: cancelled.\n' >&2
+            printf '  %sagy use: cancelled.%s\n' "${C_MUTED}" "${T_RESET}" >&2
             return 1
         fi
     fi
@@ -1410,13 +1590,15 @@ agy_profile_select() {
     root="$(agy_profile_root)"
     mapfile -t profiles < <(agy_list_profiles)
     if [ "${#profiles[@]}" -eq 0 ]; then
-        printf 'agy profile: no profiles found in %s\n' "$root" >&2
+        printf '  %sagy profile: no profiles found in %s%s\n' "${T_RED}" "$root" "${T_RESET}" >&2
         return 0
     fi
     if [ -t 0 ]; then
         display_limit=9
     fi
-    printf 'agy profile\n'
+    
+    agy_print_header "agy profile" "Select or enter an auth/session profile"
+    
     idx=0
     for profile in "${profiles[@]}"; do
         idx=$((idx + 1))
@@ -1424,23 +1606,24 @@ agy_profile_select() {
             truncated=1
             continue
         fi
-        printf '  %2d. %s\n' "$idx" "$profile"
+        printf '  %s%2d.%s %s%s%s\n' "${C_NUMBER}" "$idx" "${T_RESET}" "${T_BOLD}" "$profile" "${T_RESET}"
     done
-    printf '  choose number or name\n'
     if [ "$truncated" -eq 1 ]; then
-        printf '  more: agy profile NAME\n'
+        printf '  %s(More options: %sagy profile NAME%s)\n\n' "${C_MUTED}" "${T_UNDERLINE}" "${T_RESET}" >&2
+    else
+        printf '\n' >&2
     fi
     if [ ! -t 0 ]; then
         return 0
     fi
     choice="$(agy_prompt_choice 'profile> ' "${#profiles[@]}")" || {
         local prompt_status=$?
-        [ "$prompt_status" -eq 130 ] && printf 'agy profile: cancelled.\n' >&2
+        [ "$prompt_status" -eq 130 ] && printf '  %sagy profile: cancelled.%s\n' "${C_MUTED}" "${T_RESET}" >&2
         return "$prompt_status"
     }
     case "$choice" in
         "")
-            printf 'agy profile: cancelled.\n' >&2
+            printf '  %sagy profile: cancelled.%s\n' "${C_MUTED}" "${T_RESET}" >&2
             return 1
             ;;
         *[!0-9]*)
@@ -1450,13 +1633,13 @@ agy_profile_select() {
                     return $?
                 fi
             done
-            printf 'agy profile: unknown profile: %s\n' "$choice" >&2
+            printf '  %sagy profile: unknown profile: %s%s\n' "${T_RED}" "$choice" "${T_RESET}" >&2
             return 2
             ;;
     esac
     i="$choice"
     if [ "$i" -lt 1 ] || [ "$i" -gt "${#profiles[@]}" ]; then
-        printf 'agy profile: invalid selection: %s\n' "$choice" >&2
+        printf '  %sagy profile: invalid selection: %s%s\n' "${T_RED}" "$choice" "${T_RESET}" >&2
         return 2
     fi
     profile="${profiles[$((i - 1))]}"
@@ -2711,7 +2894,6 @@ agy_main() {
     esac
 
     if [ "$mode" = "bare" ]; then
-        agy_refresh_wrapper_and_reexec_if_needed quiet "$@"
         agy_run_bare_runtime "$@"
         return $?
     fi
