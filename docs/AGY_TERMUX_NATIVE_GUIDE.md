@@ -7,12 +7,13 @@ Termux-managed runtime with a single public launcher at `$PREFIX/bin/agy`.
 
 | Command | Behavior |
 | :--- | :--- |
-| `agy` | Normal CLI entrypoint. Bare execution performs light preflight and may refresh the upstream binary when needed. |
+| `agy` | Normal CLI entrypoint. Bare execution performs light preflight and may refresh wrapper support plus the upstream binary when needed. |
 | `agy help` | Show native help first, then wrapper help below it. |
-| `agy profile` | List available profiles or enter one by name. |
+| `agy use` | List cached, buildable, and remote tuples, then run the selected combination. |
+| `agy profile` | List numbered profiles or enter one by name. |
 | `agy profile NAME` | Enter the named profile and run the bare CLI in that profile home. |
 | `agy setup` | Refresh managed launcher/support files from `main`, ensure raw/runtime are ready, and print `agy :` / `wrapper :` version rows. |
-| `agy update` | Termux-safe official binary update pipeline, then print `agy :` / `wrapper :` version rows. |
+| `agy update` | Refresh wrapper support, run the Termux-safe official binary update pipeline, then print `agy :` / `wrapper :` version rows. |
 | `agy doctor` | Local diagnostics for PATH, launcher, runtime, resolver, CA, and state. |
 | `agy version` | Print `agy :` and `wrapper :` version rows. |
 | `agy remove` | Remove the managed launcher, runtime/raw files, state, and obsolete shims. |
@@ -48,6 +49,13 @@ $PREFIX/bin/agy
 ~/.local/share/agy/native/state.json
   Runtime state file recording raw/runtime hashes and the last successful bare
   `agy` runtime tuple.
+
+~/.local/share/agy/native/registry.json
+  Registry of raw binary snapshots, wrapper snapshots, and successful runtime
+  tuple caches.
+
+~/.local/share/agy/native/store/
+  Cache root for raw binaries, wrapper snapshots, and successful runtime tuples.
 
 ~/.local/share/agy/native/doctor/
   Local diagnostic cases created after non-auth runtime failures.
@@ -89,10 +97,29 @@ installer fetches the current upstream binary and builds the patched runtime.
 
 ### `agy update`
 
-`agy update` is the only public official-binary update entrypoint. It checks the
-upstream manifest, verifies checksums, builds a patched candidate, smoke-tests it
-with `--version`, and atomically promotes raw/runtime files while holding the
-native state lock.
+`agy update` is the explicit full refresh entrypoint. It refreshes wrapper
+support first, then checks the upstream manifest, verifies checksums, builds a
+patched candidate with the selected wrapper snapshot, smoke-tests it with
+`--version`, and promotes raw/runtime files only after validation while holding
+the native state lock.
+
+### `agy use`
+
+`agy use` lists numbered candidates: cached runtime tuples, buildable cached
+raw/wrapper combinations, and remote raw candidates paired with the latest
+wrapper. Choosing a cached runtime reuses it. Choosing a buildable tuple creates
+a patched runtime from the selected stored raw and wrapper. Choosing a remote
+candidate downloads and verifies the raw binary first, then builds and runs the
+selected tuple.
+
+When bare `agy` resumes a previously selected tuple in an interactive terminal,
+`Enter` or `Y` keeps the previous tuple, `N` jumps to the latest path, `Esc`
+cancels the current `agy` execution, and any other input forwards to the tuple
+selector.
+
+Inside `agy use`, pressing `Esc` cancels the selection and exits without
+starting a runtime. Any typed number, tuple id, or listed remote version is treated as the tuple
+selector input.
 
 ### `agy remove`
 
@@ -114,6 +141,7 @@ not remove user Antigravity/OAuth config outside those managed runtime paths.
 - fd 33 resolver readiness;
 - patched runtime interpreter when `patchelf` is available;
 - patched runtime `--version` startup;
+- upstream update kill-switch status;
 - state/runtime hash drift.
 
 It exits non-zero when required checks fail and prints warning counts for
@@ -130,7 +158,7 @@ agy auth login
 
 ## Profiles
 
-`agy profile` is a profile selector and entrypoint, not a management command.
+`agy profile` is a numbered profile selector and entrypoint, not a management command.
 It lists profile names from `~/.agy-profiles/` and can enter a named profile by
 setting `AGY_PROFILE_HOME` for the bare runtime. It does not create, rename, or
 delete profile directories.

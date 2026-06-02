@@ -12,12 +12,13 @@ AGY_MANAGED_LAUNCHER_MARKER="${AGY_MANAGED_LAUNCHER_MARKER:-agy native managed l
 
 usage() {
     cat <<'EOF'
-Usage: bash bin/install-runtime.sh [setup|remove|doctor]
+Usage: bash bin/install-runtime.sh [setup|support|remove|doctor]
 
 Default action: setup
 
 Actions:
   setup        Install managed launcher and runtime support, then ensure raw/runtime are ready.
+  support      Refresh managed launcher/support files without touching raw/runtime.
   remove       Remove managed launcher, runtime files, state, and obsolete shims.
   doctor       Run the local installer/launcher diagnosis checks.
 
@@ -197,6 +198,7 @@ agy_setup_cleanup() {
 
 agy_setup_finalize() {
     agy_prune_backups
+    agy_registry_bootstrap_from_current
     agy_print_version_summary "$(agy_current_version 2>/dev/null || true)"
 }
 
@@ -208,6 +210,13 @@ agy_setup() {
     agy_setup_finalize
 }
 
+agy_support() {
+    agy_install_support_files
+    agy_install_launcher
+    agy_setup_cleanup
+    agy_setup_finalize
+}
+
 agy_do_remove() {
     agy_remove_run
 }
@@ -215,6 +224,9 @@ agy_do_remove() {
 case "${1:-setup}" in
     setup)
         agy_setup
+        ;;
+    support)
+        agy_support
         ;;
     remove)
         agy_do_remove

@@ -63,6 +63,7 @@ static struct route decide_route(int argc, char **argv) {
     if (streq(argv[1], "setup")) return (struct route){ROUTE_MANAGED_SHELL, "setup route"};
     if (streq(argv[1], "update")) return (struct route){ROUTE_MANAGED_SHELL, "update route"};
     if (streq(argv[1], "help")) return (struct route){ROUTE_MANAGED_SHELL, "help route"};
+    if (streq(argv[1], "use")) return (struct route){ROUTE_MANAGED_SHELL, "use route"};
     if (streq(argv[1], "profile")) return (struct route){ROUTE_MANAGED_SHELL, "profile route"};
     if (streq(argv[1], "remove")) return (struct route){ROUTE_MANAGED_SHELL, "remove route"};
     if (streq(argv[1], "doctor")) return (struct route){ROUTE_MANAGED_SHELL, "doctor route"};
@@ -112,6 +113,7 @@ int main(int argc, char **argv) {
     char default_cert_file[PATH_MAX];
     char default_cert_dir[PATH_MAX];
     char lib_path[PATH_MAX * 2];
+    char kill_switch_arg[PATH_MAX * 2];
     const char *home = getenv("HOME");
     const char *prefix = getenv("PREFIX");
     const char *resolver_path;
@@ -146,6 +148,11 @@ int main(int argc, char **argv) {
     bash_path = env_or("AGY_BASH", default_bash);
     cert_file = env_or("AGY_CERT_FILE", default_cert_file);
     cert_dir = env_or("AGY_CERT_DIR", default_cert_dir);
+    if (snprintf(kill_switch_arg, sizeof(kill_switch_arg), "--release_base_url=%s",
+        env_or("AGY_UPSTREAM_UPDATE_DISABLED_BASE_URL", "http://127.0.0.1:9/disabled")) >= (int)sizeof(kill_switch_arg)) {
+        fprintf(stderr, "agy-launcher: kill switch argument is too long\n");
+        return 125;
+    }
 
     route = decide_route(argc, argv);
     debug_log("route decision=%s reason=%s", route.action == ROUTE_MANAGED_SHELL ? "managed" : "upstream", route.reason ? route.reason : "none");
@@ -186,10 +193,11 @@ int main(int argc, char **argv) {
     exec_argv[1] = "--library-path";
     exec_argv[2] = lib_path;
     exec_argv[3] = (char *)runtime_path;
+    exec_argv[4] = kill_switch_arg;
     for (i = 1; i < argc; i++) {
-        exec_argv[i + 3] = (i == 1 && streq(argv[i], "version")) ? "--version" : argv[i];
+        exec_argv[i + 4] = (i == 1 && streq(argv[i], "version")) ? "--version" : argv[i];
     }
-    exec_argv[argc + 3] = NULL;
+    exec_argv[argc + 4] = NULL;
 
     execv(loader_path, exec_argv);
     if (exec_managed_shell(bash_path, shell_path, argc, argv) < 0) {
