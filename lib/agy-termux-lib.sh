@@ -400,6 +400,14 @@ agy_registry_runtime_exists() {
     [ -n "$runtime_path" ] && [ -x "$runtime_path" ]
 }
 
+agy_compact_runtime_label() {
+    local raw_version="${1:-unknown}" wrapper_version="${2:-unknown}" wrapper_commit="${3:-unknown}" short_commit
+    short_commit="${wrapper_commit:-unknown}"
+    short_commit="${short_commit:0:6}"
+    [ -n "$short_commit" ] || short_commit="unknown"
+    printf 'agy %s  wrapper %s (%s)' "$raw_version" "$wrapper_version" "$short_commit"
+}
+
 agy_registry_print_candidates() {
     python3 - "$AGY_REGISTRY_FILE" "$AGY_STATE_FILE" <<'PY'
 import json
@@ -943,9 +951,20 @@ agy_list_profiles() {
 }
 
 agy_prompt_choice() {
-    local prompt="${1:-profile> }" reply rest
+    local prompt="${1:-profile> }" _max_items="${2:-9}" reply rest
     printf '%s' "$prompt" >&2
-    if ! IFS= read -r -s -n 1 reply; then
+    if [ -t 0 ]; then
+        local old_tty status
+        old_tty="$(stty -g 2>/dev/null || true)"
+        [ -z "$old_tty" ] || stty -echo -icanon min 1 time 0 2>/dev/null || true
+        IFS= read -r -N 1 reply
+        status=$?
+        [ -z "$old_tty" ] || stty "$old_tty" 2>/dev/null || true
+        if [ "$status" -ne 0 ]; then
+            printf '\n' >&2
+            return 1
+        fi
+    elif ! IFS= read -r -N 1 reply; then
         printf '\n' >&2
         return 1
     fi
@@ -956,21 +975,26 @@ agy_prompt_choice() {
             ;;
         $'\n'|$'\r'|'')
             printf '\n' >&2
-            return 1
-            ;;
-        *)
-            rest=""
-            IFS= read -r rest || true
-            printf '\n' >&2
-            printf '%s%s\n' "$reply" "$rest"
             return 0
             ;;
+        [1-9])
+            printf '%s\n' "$reply" >&2
+            printf '%s\n' "$reply"
+            return 0
+            ;;
+        *)
+            ;;
     esac
+    rest=""
+    printf '%s' "$reply" >&2
+    IFS= read -r rest || true
+    printf '%s%s\n' "$reply" "$rest"
+    return 0
 }
 
 
 agy_bare_resume_prompt() {
-    local reply rest
+    local choice
 
     if [ ! -t 0 ]; then
         printf 'latest\n'
@@ -978,118 +1002,69 @@ agy_bare_resume_prompt() {
     fi
 
     agy_bare_print_resume_candidates >&2
-    printf 'agy: choose [Enter/Y=previous, N=latest, Esc=cancel, number/id=tuple] ' >&2
-    if ! IFS= read -r -s -n 1 reply; then
-        printf '\n' >&2
-        printf 'latest\n'
-        return 0
-    fi
-    case "$reply" in
-        '')
-            printf '\n' >&2
+    printf '  choose number\n' >&2
+    choice="$(agy_prompt_choice 'agy> ' 2)" || return $?
+    case "$choice" in
+        ""|"1"|"previous"|"prev"|"p"|"P")
             printf 'previous\n'
             return 0
             ;;
-        'y'|'Y')
-            rest=""
-            IFS= read -r rest || true
-            printf '\n' >&2
-            if [ -z "$rest" ]; then
-                printf 'previous\n'
-            else
-                printf 'select:%s%s\n' "$reply" "$rest"
-            fi
-            return 0
-            ;;
-        $'\n'|$'\r')
-            printf '\n' >&2
-            printf 'previous\n'
-            return 0
-            ;;
-        'n'|'N')
-            rest=""
-            IFS= read -r rest || true
-            printf '\n' >&2
-            if [ -z "$rest" ]; then
-                printf 'latest\n'
-            else
-                printf 'select:%s%s\n' "$reply" "$rest"
-            fi
+        "2"|"latest"|"l"|"L")
+            printf 'latest\n'
             return 0
             ;;
         $'\e')
-            printf '\n' >&2
             printf 'agy: cancelled.\n' >&2
             return 130
             ;;
         *)
-            rest=""
-            IFS= read -r rest || true
-            printf '\n' >&2
-            printf 'select:%s%s\n' "$reply" "$rest"
-            return 0
+            printf 'agy: invalid selection: %s\n' "$choice" >&2
+            return 2
             ;;
     esac
 }
 
 agy_use_prompt_selection() {
-    local reply rest
+    local max_items="${1:-0}" choice
 
     if [ ! -t 0 ]; then
         return 1
     fi
 
-    printf 'agy use> ' >&2
-    if ! IFS= read -r -s -n 1 reply; then
-        printf '\n' >&2
-        return 1
-    fi
-    case "$reply" in
-        $'\e')
-            printf '\nagy use: cancelled.\n' >&2
-            return 130
-            ;;
-        $'\n'|$'\r')
-            printf '\nagy use: cancelled.\n' >&2
-            return 1
-            ;;
-        *)
-            rest=""
-            IFS= read -r rest || true
-            printf '\n' >&2
-            printf '%s%s\n' "$reply" "$rest"
-            return 0
-            ;;
-    esac
+    choice="$(agy_prompt_choice 'agy use> ' "$max_items")" || return $?
+    printf '%s\n' "$choice"
+    return 0
 }
 
 agy_bare_print_resume_candidates() {
-    local tuple_id raw_id wrapper_id raw_version wrapper_version wrapper_commit flags count=2
+    local raw_id wrapper_id raw_version wrapper_version wrapper_commit latest_raw_id latest_wrapper_id latest_raw_version latest_wrapper_version latest_wrapper_commit
     agy_load_state
-    printf 'agy tuples\n'
+    printf 'agy\n'
+    latest_raw_id="$(agy_registry_latest_raw_id)"
+    latest_wrapper_id="$(agy_registry_latest_wrapper_id)"
+    latest_raw_version="$(agy_registry_raw_field "$latest_raw_id" version)"
+    latest_wrapper_version="$(agy_registry_wrapper_field "$latest_wrapper_id" version)"
+    latest_wrapper_commit="$(agy_registry_wrapper_field "$latest_wrapper_id" commit)"
     if [ -n "${PREFERRED_TUPLE_ID:-}" ]; then
         raw_id="$(agy_registry_runtime_field "$PREFERRED_TUPLE_ID" raw_id)"
         wrapper_id="$(agy_registry_runtime_field "$PREFERRED_TUPLE_ID" wrapper_id)"
         raw_version="$(agy_registry_raw_field "$raw_id" version)"
         wrapper_version="$(agy_registry_wrapper_field "$wrapper_id" version)"
         wrapper_commit="$(agy_registry_wrapper_field "$wrapper_id" commit)"
-        printf '  1. previous  raw=%s  wrapper=%s (%s)\n' "${raw_version:-unknown}" "${wrapper_version:-unknown}" "${wrapper_commit:-unknown}"
+        printf '  1. previous  %s\n' "$(agy_compact_runtime_label "$raw_version" "$wrapper_version" "$wrapper_commit")"
     else
         printf '  1. previous  unavailable\n'
     fi
-    printf '  2. latest    refresh wrapper and upstream binary\n'
-    while IFS=$'\t' read -r kind tuple_id raw_id wrapper_id raw_version wrapper_version wrapper_commit flags runtime_path; do
-        [ -n "$tuple_id" ] || continue
-        [ "$tuple_id" = "${PREFERRED_TUPLE_ID:-}" ] && continue
-        case ",$flags," in *",verified,"*|*",cached,"*) ;; *) continue ;; esac
-        count=$((count + 1))
-        printf '  %d. %s  raw=%s  wrapper=%s (%s)  %s\n' "$count" "$tuple_id" "${raw_version:-unknown}" "${wrapper_version:-unknown}" "${wrapper_commit:-unknown}" "$flags"
-    done < <(agy_registry_print_candidates)
+    if [ -n "$latest_raw_id" ] && [ -n "$latest_wrapper_id" ]; then
+        printf '  2. latest    %s\n' "$(agy_compact_runtime_label "$latest_raw_version" "$latest_wrapper_version" "$latest_wrapper_commit")"
+    else
+        printf '  2. latest    refresh wrapper and upstream binary\n'
+    fi
 }
 
 agy_run_bare_runtime() {
     local first="${1:-}"
-    local before after temp_raw exit_code case_dir bare_action bare_selection raw_id wrapper_id
+    local before after temp_raw exit_code case_dir bare_action raw_id wrapper_id
     agy_light_preflight || return $?
     agy_load_state
     bare_action="latest"
@@ -1110,10 +1085,8 @@ agy_run_bare_runtime() {
             agy_state_clear_preferred_tuple
             printf 'agy: previous tuple unavailable; using latest.\n' >&2
             ;;
-        select:*)
-            bare_selection="${bare_action#select:}"
-            agy_use_select_candidate "$bare_selection"
-            return $?
+        latest)
+            agy_state_clear_preferred_tuple
             ;;
     esac
     agy_auto_update "$first" || return $?
@@ -1230,8 +1203,13 @@ agy_use_activate_tuple() {
 }
 
 agy_use_print_candidates() {
-    local count=0 kind tuple_id raw_id wrapper_id raw_version wrapper_version wrapper_commit flags runtime_path
+    local count=0 kind tuple_id raw_id wrapper_id raw_version wrapper_version wrapper_commit flags runtime_path label
     local version manifest_url url sha512 latest_wrapper_id latest_wrapper_version latest_wrapper_commit
+    local interactive_limit=0 truncated=0
+
+    if [ -t 0 ]; then
+        interactive_limit=9
+    fi
 
     agy_registry_bootstrap_from_current
     latest_wrapper_id="$(agy_registry_latest_wrapper_id)"
@@ -1241,19 +1219,31 @@ agy_use_print_candidates() {
     printf 'agy use\n'
     while IFS=$'\t' read -r kind tuple_id raw_id wrapper_id raw_version wrapper_version wrapper_commit flags runtime_path; do
         [ -n "$tuple_id" ] || continue
+        if [ "$interactive_limit" -gt 0 ] && [ "$count" -ge "$interactive_limit" ]; then
+            truncated=1
+            continue
+        fi
         count=$((count + 1))
-        printf '  %2d. %s  raw=%s  wrapper=%s (%s)  %s\n' \
-            "$count" "$tuple_id" "${raw_version:-unknown}" "${wrapper_version:-unknown}" "${wrapper_commit:-unknown}" "$flags"
+        label="$(agy_compact_runtime_label "$raw_version" "$wrapper_version" "$wrapper_commit")"
+        printf '  %2d. %s  %s\n' "$count" "$label" "$flags"
     done < <(agy_registry_print_candidates)
 
     while IFS=$'\t' read -r version manifest_url url sha512; do
         [ -n "$version" ] || continue
+        if [ "$interactive_limit" -gt 0 ] && [ "$count" -ge "$interactive_limit" ]; then
+            truncated=1
+            continue
+        fi
         count=$((count + 1))
-        printf '  %2d. %s  raw=%s  wrapper=%s (%s)  remote\n' \
-            "$count" "$version" "$version" "${latest_wrapper_version:-unknown}" "${latest_wrapper_commit:-unknown}"
+        label="$(agy_compact_runtime_label "$version" "${latest_wrapper_version:-unknown}" "${latest_wrapper_commit:-unknown}")"
+        printf '  %2d. %s  remote\n' "$count" "$label"
     done < <(agy_remote_raw_candidates)
 
-    printf '  choose number or tuple id\n'
+    AGY_USE_MENU_COUNT="$count"
+    printf '  choose number\n'
+    if [ "$truncated" -eq 1 ]; then
+        printf '  more: agy use VERSION\n'
+    fi
 }
 
 agy_select_remote_raw() {
@@ -1306,9 +1296,9 @@ agy_select_remote_raw() {
 
 agy_use_select_candidate() {
     local selection="$1"
-    local selected_kind="" selected_tuple_id="" selected_raw_id="" selected_wrapper_id="" selected_manifest_url="" selected_version="" selected_url="" selected_sha=""
+    local selected_kind="" selected_tuple_id="" selected_raw_id="" selected_wrapper_id="" selected_manifest_url="" selected_version="" selected_url="" selected_sha="" selected_label=""
     local kind tuple_id raw_id wrapper_id raw_version wrapper_version wrapper_commit flags runtime_path count=0
-    local version manifest_url url sha512 latest_wrapper_id
+    local version manifest_url url sha512 latest_wrapper_id current_latest_raw_id current_latest_wrapper_id current_latest_tuple_id
 
     agy_registry_bootstrap_from_current
     latest_wrapper_id="$(agy_registry_latest_wrapper_id)"
@@ -1352,11 +1342,23 @@ agy_use_select_candidate() {
         selected_tuple_id="$(agy_tuple_id "$selected_raw_id" "$selected_wrapper_id")"
     fi
 
+    selected_label="$(agy_compact_runtime_label \
+        "$(agy_registry_raw_field "$selected_raw_id" version)" \
+        "$(agy_registry_wrapper_field "$selected_wrapper_id" version)" \
+        "$(agy_registry_wrapper_field "$selected_wrapper_id" commit)")"
+
     if ! agy_use_activate_tuple "$selected_tuple_id" "$selected_raw_id" "$selected_wrapper_id"; then
         printf 'agy use: tuple unavailable: %s\n' "$selected_tuple_id" >&2
         return 77
     fi
-    agy_state_set_preferred_tuple "$selected_tuple_id" "${selected_version:-$selected_tuple_id}"
+    current_latest_raw_id="$(agy_registry_latest_raw_id)"
+    current_latest_wrapper_id="$(agy_registry_latest_wrapper_id)"
+    current_latest_tuple_id="$(agy_tuple_id "$current_latest_raw_id" "$current_latest_wrapper_id")"
+    if [ "$selected_tuple_id" = "$current_latest_tuple_id" ]; then
+        agy_state_clear_preferred_tuple
+    else
+        agy_state_set_preferred_tuple "$selected_tuple_id" "$selected_label"
+    fi
     agy_run_selected_runtime "$AGY_PATCHED"
 }
 
@@ -1368,7 +1370,7 @@ agy_use() {
         if [ ! -t 0 ]; then
             return 0
         fi
-        selection="$(agy_use_prompt_selection)" || return $?
+        selection="$(agy_use_prompt_selection "${AGY_USE_MENU_COUNT:-0}")" || return $?
         if [ -z "$selection" ]; then
             printf 'agy use: cancelled.\n' >&2
             return 1
@@ -1404,24 +1406,34 @@ agy_profile_run() {
 }
 
 agy_profile_select() {
-    local root profiles profile choice i idx
+    local root profiles profile choice i idx display_limit=0 truncated=0
     root="$(agy_profile_root)"
     mapfile -t profiles < <(agy_list_profiles)
     if [ "${#profiles[@]}" -eq 0 ]; then
         printf 'agy profile: no profiles found in %s\n' "$root" >&2
         return 0
     fi
-    printf 'profiles\n'
+    if [ -t 0 ]; then
+        display_limit=9
+    fi
+    printf 'agy profile\n'
     idx=0
     for profile in "${profiles[@]}"; do
         idx=$((idx + 1))
+        if [ "$display_limit" -gt 0 ] && [ "$idx" -gt "$display_limit" ]; then
+            truncated=1
+            continue
+        fi
         printf '  %2d. %s\n' "$idx" "$profile"
     done
-    printf '  choose number or profile name\n'
+    printf '  choose number or name\n'
+    if [ "$truncated" -eq 1 ]; then
+        printf '  more: agy profile NAME\n'
+    fi
     if [ ! -t 0 ]; then
         return 0
     fi
-    choice="$(agy_prompt_choice 'profile> ')" || {
+    choice="$(agy_prompt_choice 'profile> ' "${#profiles[@]}")" || {
         local prompt_status=$?
         [ "$prompt_status" -eq 130 ] && printf 'agy profile: cancelled.\n' >&2
         return "$prompt_status"
@@ -1458,6 +1470,7 @@ agy_build_runtime_candidate() {
     local log_file="$3"
     local wrapper_id="${4:-}"
     local builder="$AGY_RUNTIME_BUILDER" wrapper_dir
+    local report_file="${log_file}.report.json"
 
     if [ -n "$wrapper_id" ]; then
         wrapper_dir="$(agy_registry_wrapper_path "$wrapper_id")"
@@ -1469,7 +1482,7 @@ agy_build_runtime_candidate() {
         fi
     fi
 
-    if ! python3 "$builder" "$raw_input" --output "$runtime_output" >"$log_file" 2>&1; then
+    if ! python3 "$builder" "$raw_input" --output "$runtime_output" --report-json "$report_file" >"$log_file" 2>&1; then
         return 70
     fi
     if command -v patchelf >/dev/null 2>&1; then
@@ -1572,6 +1585,10 @@ agy_make_case() {
     } >"$case_dir/install_prompt.txt"
     agy_redact_file "$case_dir/install_prompt.txt" "$case_dir/install_prompt.redacted"
     mv "$case_dir/install_prompt.redacted" "$case_dir/install_prompt.txt"
+    if [ -f "${raw_log}.report.json" ]; then
+        cp "${raw_log}.report.json" "$case_dir/build-report.json"
+        chmod 600 "$case_dir/build-report.json"
+    fi
     chmod 600 "$case_dir/install_prompt.txt" "$case_dir/env.log"
     agy_diag_prune
     agy_set_last_case "$case_dir"
@@ -1896,7 +1913,7 @@ agy_bootstrap_setup() {
 
 agy_refresh_wrapper_support() {
     local display_mode="${1:-quiet}"
-    local before after tmp_dir status
+    local before after tmp_dir status target_version target_commit target
     [ "${AGY_DISABLE_WRAPPER_REFRESH:-0}" = "1" ] && return 0
     [ "${AGY_WRAPPER_REFRESHED:-0}" = "1" ] && return 0
     before="$(agy_current_wrapper_version)+$(agy_current_wrapper_commit)"
@@ -1911,6 +1928,21 @@ agy_refresh_wrapper_support() {
         agy_make_case "$status" "$tmp_dir/refresh.log" >/dev/null
         rm -rf "$tmp_dir"
         return "$status"
+    fi
+    target_version="$(
+        unset AGY_WRAPPER_VERSION AGY_WRAPPER_CHANNEL AGY_WRAPPER_COMMIT AGY_WRAPPER_REPO AGY_WRAPPER_INSTALLED_AT
+        if [ -f "$tmp_dir/repo/config/wrapper-version.env" ]; then
+            # shellcheck disable=SC1090
+            . "$tmp_dir/repo/config/wrapper-version.env" 2>/dev/null || true
+        fi
+        printf '%s\n' "${AGY_WRAPPER_VERSION:-unknown}"
+    )"
+    target_commit="$(git -C "$tmp_dir/repo" rev-parse --short=6 HEAD 2>/dev/null || printf 'unknown\n')"
+    target="$target_version+$target_commit"
+    if [ "$target" = "$before" ]; then
+        rm -rf "$tmp_dir"
+        set -e
+        return 0
     fi
     set +e
     (cd "$tmp_dir/repo" && AGY_SKIP_AUTO_UPDATE=1 bash ./bin/install-runtime.sh support) >>"$tmp_dir/refresh.log" 2>&1
@@ -2482,6 +2514,7 @@ agy_doctor() {
     agy_load_state
     local failures=0 warnings=0 active patched_version interp
     local current_raw_hash current_patched_hash tuple_name tuple_id raw_id wrapper_id runtime_path
+    local last_case_path last_build_profile
 
     agy_doctor_ok() { printf 'ok    %s\n' "$*"; }
     agy_doctor_warn() { warnings=$((warnings + 1)); printf 'warn  %s\n' "$*"; }
@@ -2558,6 +2591,31 @@ agy_doctor() {
         agy_doctor_warn 'state/runtime drift detected; run agy setup'
     else
         agy_doctor_ok 'state matches current raw/runtime hashes'
+    fi
+
+    last_case_path="$(agy_last_case_path 2>/dev/null || true)"
+    if [ -n "$last_case_path" ] && [ -f "$last_case_path/build-report.json" ]; then
+        last_build_profile="$(python3 - "$last_case_path/build-report.json" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as handle:
+        data = json.load(handle)
+except Exception:
+    raise SystemExit(1)
+
+profile = data.get("allocator_profile", "unknown")
+missing = data.get("missing_required") or []
+if missing:
+    print(f"{profile} (missing: {', '.join(missing)})")
+else:
+    print(profile)
+PY
+)"
+        if [ -n "$last_build_profile" ]; then
+            agy_doctor_warn "last runtime build profile: $last_build_profile"
+        fi
     fi
 
     if [ -n "${VERIFIED_AT:-}" ]; then

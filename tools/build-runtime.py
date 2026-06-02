@@ -67,6 +67,12 @@ class BuildReport:
     word_counts: dict[str, int]
     syscall_count: int
     resolver_path_count: int
+    section_offset: int | None
+    section_size: int | None
+    allocator_profile: str
+    allocator_required: bool
+    allocator_status: str
+    missing_required: list[str]
 
     @property
     def total(self) -> int:
@@ -79,8 +85,14 @@ class BuildReport:
         )
 
 
+class BuildError(RuntimeError):
+    def __init__(self, message: str, report: BuildReport | None = None):
+        super().__init__(message)
+        self.report = report
+
+
 BITFIELD_WINDOW_RULES = (
-    BitfieldWindowRule("range-window", 42, 44, 35, 37, required=True),
+    BitfieldWindowRule("range-window", 42, 44, 35, 37),
     BitfieldWindowRule("shift-window", 22, 21, 29, 28),
 )
 
@@ -91,7 +103,6 @@ PAIR_REWRITE_RULES = (
         second_word=0xF2E0000A,
         replacement_first=0x9280000A,
         replacement_second=0xD35DFD4A,
-        required=True,
     ),
 )
 
@@ -130,6 +141,8 @@ SYSCALL_COMPAT_RULE = SyscallCompatRule(
     call_mask=0xFC000000,
     call_value=0x94000000,
 )
+
+ALLOCATOR_CORE_RULES = ("range-window", "address-mask")
 
 
 def sha256(path: Path) -> str:
@@ -183,22 +196,49 @@ def write_word(data: bytearray, offset: int, word: int) -> None:
 def find_elf_section(data: bytearray, wanted_name: str) -> tuple[int | None, int | None]:
     if data[:4] != b"\x7fELF":
         return None, None
+    if len(data) < 64:
+        return None, None
+
+    ei_class = data[4]
+    ei_data = data[5]
+    if ei_class != 2 or ei_data != 1:
+        return None, None
 
     section_header_offset = struct.unpack_from("<Q", data, 40)[0]
     section_header_size = struct.unpack_from("<H", data, 58)[0]
     section_count = struct.unpack_from("<H", data, 60)[0]
     string_table_index = struct.unpack_from("<H", data, 62)[0]
+    if section_header_size == 0 or section_count == 0:
+        return None, None
+    if string_table_index >= section_count:
+        return None, None
+    table_end = section_header_offset + section_header_size * section_count
+    if table_end > len(data):
+        return None, None
     string_table_header = section_header_offset + string_table_index * section_header_size
+    if string_table_header + 40 > len(data):
+        return None, None
     string_table_offset = struct.unpack_from("<Q", data, string_table_header + 24)[0]
+    string_table_size = struct.unpack_from("<Q", data, string_table_header + 32)[0]
+    if string_table_offset + string_table_size > len(data):
+        return None, None
 
     for index in range(section_count):
         header = section_header_offset + index * section_header_size
+        if header + 40 > len(data):
+            return None, None
         name_offset = struct.unpack_from("<I", data, header)[0]
         file_offset = struct.unpack_from("<Q", data, header + 24)[0]
         file_size = struct.unpack_from("<Q", data, header + 32)[0]
+        if file_offset + file_size > len(data):
+            continue
+        if name_offset >= string_table_size:
+            continue
         try:
             name_end = data.index(b"\x00", string_table_offset + name_offset)
         except ValueError:
+            continue
+        if name_end > string_table_offset + string_table_size:
             continue
         section_name = data[string_table_offset + name_offset : name_end].decode(
             "utf-8", errors="replace"
@@ -206,6 +246,29 @@ def find_elf_section(data: bytearray, wanted_name: str) -> tuple[int | None, int
         if section_name == wanted_name:
             return file_offset, file_offset + file_size
     return None, None
+
+
+def allocator_counts(report: BuildReport) -> dict[str, int]:
+    return {
+        "range-window": report.bitfield_counts.get("range-window", 0),
+        "shift-window": report.bitfield_counts.get("shift-window", 0),
+        "address-mask": report.pair_counts.get("address-mask", 0),
+        "mapping-window": report.word_counts.get("mapping-window", 0),
+        "tag-window": report.word_counts.get("tag-window", 0),
+    }
+
+
+def classify_allocator_profile(report: BuildReport) -> tuple[str, bool, str, list[str]]:
+    counts = allocator_counts(report)
+    signal_total = sum(counts.values())
+    if signal_total == 0:
+        return "compact-google-malloc", False, "not-applicable", []
+
+    missing_core = [name for name in ALLOCATOR_CORE_RULES if counts.get(name, 0) == 0]
+    if not missing_core:
+        return "legacy-va39", True, "ok", []
+
+    return "unknown-partial", True, "missing", missing_core
 
 
 def rewrite_bitfield_windows(data: bytearray, lo: int, hi: int) -> dict[str, int]:
@@ -290,24 +353,17 @@ def rewrite_resolver_path_compat(data: bytearray) -> int:
 
 def validate_report(report: BuildReport) -> None:
     if report.total == 0:
-        raise RuntimeError("no runtime rewrites applied")
+        raise BuildError("no runtime rewrites applied", report)
 
-    missing_required: list[str] = []
-    for rule in BITFIELD_WINDOW_RULES:
-        if rule.required and report.bitfield_counts.get(rule.name, 0) == 0:
-            missing_required.append(rule.name)
-    for rule in PAIR_REWRITE_RULES:
-        if rule.required and report.pair_counts.get(rule.name, 0) == 0:
-            missing_required.append(rule.name)
-    for group in WORD_REWRITE_GROUPS:
-        if group.required and report.word_counts.get(group.name, 0) == 0:
-            missing_required.append(group.name)
+    missing_required = list(report.missing_required)
+    if report.allocator_required and report.allocator_status != "ok":
+        missing_required = list(dict.fromkeys(missing_required))
     if report.resolver_path_count == 0:
         missing_required.append("resolver-path")
 
     if missing_required:
-        names = ", ".join(missing_required)
-        raise RuntimeError(f"required rewrite pattern missing: {names}")
+        names = ", ".join(dict.fromkeys(missing_required))
+        raise BuildError(f"allocator profile {report.allocator_profile} (missing: {names})", report)
 
 
 def build_runtime(
@@ -347,7 +403,18 @@ def build_runtime(
         word_counts=rewrite_word_groups(data, lo, hi),
         syscall_count=rewrite_syscall_compat(data, syscall_compat),
         resolver_path_count=rewrite_resolver_path_compat(data),
+        section_offset=section_lo,
+        section_size=(section_hi - section_lo) if section_lo is not None and section_hi is not None else None,
+        allocator_profile="unknown",
+        allocator_required=False,
+        allocator_status="unknown",
+        missing_required=[],
     )
+    profile, required, status, missing = classify_allocator_profile(report)
+    report.allocator_profile = profile
+    report.allocator_required = required
+    report.allocator_status = status
+    report.missing_required = missing
     validate_report(report)
 
     tmp.write_bytes(data)
@@ -366,6 +433,12 @@ def print_report(report: BuildReport) -> None:
         print(f"  {name}: {count}")
     print(f"  {SYSCALL_COMPAT_RULE.name}: {report.syscall_count}")
     print(f"  resolver-path: {report.resolver_path_count}")
+    print(f"  allocator-profile: {report.allocator_profile}")
+    print(f"  allocator-required: {'yes' if report.allocator_required else 'no'}")
+    print(
+        "  missing-required: "
+        + (", ".join(report.missing_required) if report.missing_required else "none")
+    )
     print(f"  total: {report.total}")
 
 def report_to_dict(report: BuildReport) -> dict:
@@ -375,11 +448,14 @@ def report_to_dict(report: BuildReport) -> dict:
         "word_counts": report.word_counts,
         "syscall_count": report.syscall_count,
         "resolver_path_count": report.resolver_path_count,
+        "section_offset": report.section_offset,
+        "section_size": report.section_size,
+        "allocator_profile": report.allocator_profile,
+        "allocator_required": report.allocator_required,
+        "allocator_status": report.allocator_status,
+        "missing_required": report.missing_required,
         "total": report.total,
         "required": {
-            "bitfield": [rule.name for rule in BITFIELD_WINDOW_RULES if rule.required],
-            "pair": [rule.name for rule in PAIR_REWRITE_RULES if rule.required],
-            "word_groups": [group.name for group in WORD_REWRITE_GROUPS if group.required],
             "resolver_path_required": True,
         },
     }
@@ -417,6 +493,16 @@ def main() -> int:
         print(f"sha256 output  : {sha256(dst)}")
         print(f"output         : {dst}")
         return 0
+    except BuildError as exc:
+        report = exc.report
+        if report is not None:
+            print_report(report)
+            if args.report_json:
+                out = Path(args.report_json).expanduser()
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_text(json.dumps(report_to_dict(report), sort_keys=True) + "\n")
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
