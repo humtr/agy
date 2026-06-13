@@ -76,7 +76,7 @@ agy_prune_backups() {
 agy_write_managed_shell() {
     mkdir -p "$AGY_RUNTIME_DIR"
     cat >"$AGY_RUNTIME_DIR/managed.sh.$$" <<EOF
-#!/$PREFIX/bin/bash
+#!$PREFIX/bin/bash
 # agy native managed shell
 set -euo pipefail
 unset LD_PRELOAD LD_LIBRARY_PATH

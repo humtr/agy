@@ -1,9 +1,26 @@
 #!/usr/bin/env bash
+
+# Re-execute under bash if currently running under dash/sh
+if [ -z "${BASH_VERSION:-}" ]; then
+    if command -v bash >/dev/null 2>&1; then
+        exec bash "$0" "$@"
+    else
+        printf 'agy setup: ERROR: This script requires bash to run.\n' >&2
+        exit 1
+    fi
+fi
+
 set -euo pipefail
 
 AGY_REPO_URL="${AGY_REPO_URL:-https://github.com/humtr/agy.git}"
 AGY_BRANCH="${AGY_BRANCH:-main}"
-AGY_USE_CWD_SOURCE="${AGY_USE_CWD_SOURCE:-0}"
+if [ -z "${AGY_USE_CWD_SOURCE:-}" ]; then
+    if [ -f "./bin/install-runtime.sh" ] && [ -f "./lib/agy-termux-lib.sh" ]; then
+        AGY_USE_CWD_SOURCE=1
+    else
+        AGY_USE_CWD_SOURCE=0
+    fi
+fi
 AGY_REQUIRED_PACKAGES="${AGY_REQUIRED_PACKAGES:-git curl python tar patchelf coreutils ca-certificates proot}"
 AGY_GLIBC_REPO_PACKAGE="${AGY_GLIBC_REPO_PACKAGE:-glibc-repo}"
 AGY_GLIBC_PACKAGES="${AGY_GLIBC_PACKAGES:-glibc glibc-runner}"
@@ -38,17 +55,19 @@ pkg_install() {
 }
 
 install_dependencies() {
-    local missing=() package
+    local missing="" package
     for package in $AGY_REQUIRED_PACKAGES; do
         if ! dpkg -s "$package" >/dev/null 2>&1; then
-            missing+=("$package")
+            missing="${missing}${missing:+ }$package"
         fi
     done
-    if [ "${#missing[@]}" -eq 0 ]; then
+    if [ -z "$missing" ]; then
         return 0
     fi
-    say "installing dependencies: ${missing[*]}"
-    pkg_install "${missing[@]}" || fail "dependency install failed: ${missing[*]}"
+    say "installing dependencies: $missing"
+    pkg_update || fail "pkg update failed"
+    # shellcheck disable=SC2086
+    pkg_install $missing || fail "dependency install failed: $missing"
 }
 
 check_glibc() {
