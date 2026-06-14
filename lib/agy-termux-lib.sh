@@ -2695,44 +2695,111 @@ agy_mark_raw_changed() {
 
 agy_doctor() {
     agy_load_state
-    local failures=0 warnings=0 active patched_version interp
+    local failures=0 warnings=0 ok_count=0 idle_count=0
+    local active patched_version interp resolver_counts etc_count fd33_count last_case_path last_build_profile current_raw_hash current_patched_hash
     local current_raw_hash current_patched_hash tuple_name tuple_id raw_id wrapper_id runtime_path
-    local last_case_path last_build_profile
+    local -a notes=()
 
-    agy_doctor_ok() { printf 'ok    %s\n' "$*"; }
-    agy_doctor_warn() { warnings=$((warnings + 1)); printf 'warn  %s\n' "$*"; }
-    agy_doctor_fail() { failures=$((failures + 1)); printf 'fail  %s\n' "$*"; }
+    agy_doctor_ansi() {
+        local code="$1" text="$2"
+        if [ -t 1 ] || [ -t 2 ]; then
+            printf '\033[%sm%s\033[0m' "$code" "$text"
+        else
+            printf '%s' "$text"
+        fi
+    }
+    agy_doctor_std_ansi() {
+        local code="$1" text="$2"
+        if [ -t 1 ] || [ -t 2 ]; then
+            printf '\033[%sm%s\033[39m' "$code" "$text"
+        else
+            printf '%s' "$text"
+        fi
+    }
+    agy_doctor_bold() { agy_doctor_ansi 1 "$1"; }
+    agy_doctor_dim() { agy_doctor_ansi 2 "$1"; }
+    agy_doctor_green() { agy_doctor_std_ansi 32 "$1"; }
+    agy_doctor_yellow() { agy_doctor_std_ansi 33 "$1"; }
+    agy_doctor_red() { agy_doctor_std_ansi 31 "$1"; }
+    agy_doctor_cyan240() {
+        if [ -t 1 ] || [ -t 2 ]; then
+            printf '\033[38;5;240m%s\033[39m' "$1"
+        else
+            printf '%s' "$1"
+        fi
+    }
+    agy_doctor_blue117() {
+        if [ -t 1 ] || [ -t 2 ]; then
+            printf '\033[38;5;117m%s\033[39m' "$1"
+        else
+            printf '%s' "$1"
+        fi
+    }
+    agy_doctor_ok() {
+        ok_count=$((ok_count + 1))
+        printf '  %s %-12s %s\n' "$(agy_doctor_green '✓')" "$(printf '%-12s' "$1")" "$(agy_doctor_dim "$2")"
+    }
+    agy_doctor_warn() {
+        warnings=$((warnings + 1))
+        notes+=("$1|$2")
+        printf '  %s %-12s %s\n' "$(agy_doctor_yellow '⚠')" "$(printf '%-12s' "$1")" "$2"
+    }
+    agy_doctor_fail() {
+        failures=$((failures + 1))
+        printf '  %s %-12s %s\n' "$(agy_doctor_red '✗')" "$(printf '%-12s' "$1")" "$2"
+    }
+    agy_doctor_note_line() {
+        printf '   %s %-12s %s\n' "$(agy_doctor_yellow '⚠')" "$1" "$2"
+    }
+    agy_doctor_detail() {
+        printf '      %s %s\n' "$(agy_doctor_cyan240 "$(printf '%-24s' "$1")")" "$(agy_doctor_dim "$2")"
+    }
+    agy_doctor_path_detail() {
+        printf '      %s %s\n' "$(agy_doctor_cyan240 "$(printf '%-24s' "$1")")" "$(agy_doctor_blue117 "$2")"
+    }
+    agy_doctor_section() {
+        printf '\n%s\n' "$(agy_doctor_bold "$1")"
+    }
+    agy_doctor_divider() {
+        printf '%s\n' "$(agy_doctor_dim '─────────────────────────────────────────────────────────────')"
+    }
+    patched_version="$(AGY_SKIP_AUTO_UPDATE=1 agy_run_candidate "$AGY_PATCHED" --version 2>/dev/null || true)"
+    printf '%s %s\n' "$(agy_doctor_bold 'agy doctor')" "$(agy_doctor_dim "v${patched_version:-unknown} · Termux native")"
+    agy_doctor_divider
 
-    printf 'agy doctor\n'
+    agy_doctor_section "Installation"
     active="$(command -v agy 2>/dev/null || true)"
     case "$active" in
         "$AGY_PREFIX/bin/agy")
-            agy_doctor_ok "PATH resolves agy to managed entrypoint: $active"
+            agy_doctor_ok "PATH" "resolves agy to managed entrypoint: $active"
             ;;
         "")
-            agy_doctor_fail 'agy is not on PATH'
+            agy_doctor_fail "PATH" 'agy is not on PATH'
             ;;
         *)
-            agy_doctor_fail "PATH resolves agy to unexpected path: $active"
+            agy_doctor_fail "PATH" "resolves agy to unexpected path: $active"
             ;;
     esac
 
-    [ -x "$AGY_PREFIX/bin/agy" ] && agy_doctor_ok "launcher exists: $AGY_PREFIX/bin/agy" || agy_doctor_fail "launcher missing or not executable: $AGY_PREFIX/bin/agy"
-    [ -r "$AGY_RUNTIME_DIR/lib.sh" ] && agy_doctor_ok "runtime library installed: $AGY_RUNTIME_DIR/lib.sh" || agy_doctor_fail "runtime library missing: $AGY_RUNTIME_DIR/lib.sh"
-    [ -x "$AGY_RUNTIME_BUILDER" ] && agy_doctor_ok "runtime builder installed: $AGY_RUNTIME_BUILDER" || agy_doctor_fail "runtime builder missing: $AGY_RUNTIME_BUILDER"
-    [ -r "$AGY_RUNTIME_DIR/wrapper-version.env" ] && agy_doctor_ok "wrapper metadata installed: $AGY_RUNTIME_DIR/wrapper-version.env" || agy_doctor_warn "wrapper metadata missing: $AGY_RUNTIME_DIR/wrapper-version.env"
+    [ -x "$AGY_PREFIX/bin/agy" ] && agy_doctor_ok "launcher" "exists: $AGY_PREFIX/bin/agy" && agy_doctor_path_detail "path" "$AGY_PREFIX/bin/agy" || agy_doctor_fail "launcher" "missing or not executable: $AGY_PREFIX/bin/agy"
+    [ -r "$AGY_RUNTIME_DIR/lib.sh" ] && agy_doctor_ok "runtime" "library installed: $AGY_RUNTIME_DIR/lib.sh" && agy_doctor_path_detail "path" "$AGY_RUNTIME_DIR/lib.sh" || agy_doctor_fail "runtime" "library missing: $AGY_RUNTIME_DIR/lib.sh"
+    [ -x "$AGY_RUNTIME_BUILDER" ] && agy_doctor_ok "builder" "runtime builder installed: $AGY_RUNTIME_BUILDER" && agy_doctor_path_detail "path" "$AGY_RUNTIME_BUILDER" || agy_doctor_fail "builder" "runtime builder missing: $AGY_RUNTIME_BUILDER"
+    [ -r "$AGY_RUNTIME_DIR/wrapper-version.env" ] && agy_doctor_ok "metadata" "wrapper metadata installed: $AGY_RUNTIME_DIR/wrapper-version.env" && agy_doctor_path_detail "path" "$AGY_RUNTIME_DIR/wrapper-version.env" || agy_doctor_warn "metadata" "wrapper metadata missing: $AGY_RUNTIME_DIR/wrapper-version.env"
 
-    [ -x "$AGY_RAW" ] && agy_doctor_ok "raw upstream binary exists: $AGY_RAW" || agy_doctor_fail "raw upstream binary missing: $AGY_RAW"
-    [ -x "$AGY_PATCHED" ] && agy_doctor_ok "patched runtime exists: $AGY_PATCHED" || agy_doctor_fail "patched runtime missing: $AGY_PATCHED"
-    [ -x "$AGY_LOADER" ] && agy_doctor_ok "glibc loader exists: $AGY_LOADER" || agy_doctor_fail "glibc loader missing: $AGY_LOADER"
-    [ -d "$AGY_GLIBC_LIB" ] && agy_doctor_ok "glibc library dir exists: $AGY_GLIBC_LIB" || agy_doctor_fail "glibc library dir missing: $AGY_GLIBC_LIB"
-    [ -f "$AGY_CERT_FILE" ] && agy_doctor_ok "CA bundle exists: $AGY_CERT_FILE" || agy_doctor_fail "CA bundle missing: $AGY_CERT_FILE"
-    [ -r "$AGY_RESOLV_CONF" ] && agy_doctor_ok "resolver source readable: $AGY_RESOLV_CONF" || agy_doctor_fail "resolver source unreadable: $AGY_RESOLV_CONF"
+    agy_doctor_section "Runtime"
+    [ -x "$AGY_RAW" ] && agy_doctor_ok "raw" "upstream binary exists: $AGY_RAW" && agy_doctor_path_detail "binary" "$AGY_RAW" || agy_doctor_fail "raw" "upstream binary missing: $AGY_RAW"
+    [ -x "$AGY_PATCHED" ] && agy_doctor_ok "patched" "runtime exists: $AGY_PATCHED" && agy_doctor_path_detail "runtime" "$AGY_PATCHED" || agy_doctor_fail "patched" "runtime missing: $AGY_PATCHED"
+    [ -x "$AGY_LOADER" ] && agy_doctor_ok "loader" "glibc loader exists: $AGY_LOADER" && agy_doctor_path_detail "loader" "$AGY_LOADER" || agy_doctor_fail "loader" "glibc loader missing: $AGY_LOADER"
+    [ -d "$AGY_GLIBC_LIB" ] && agy_doctor_ok "glibc" "library dir exists: $AGY_GLIBC_LIB" && agy_doctor_path_detail "lib dir" "$AGY_GLIBC_LIB" || agy_doctor_fail "glibc" "library dir missing: $AGY_GLIBC_LIB"
+
+    agy_doctor_section "Environment"
+    [ -f "$AGY_CERT_FILE" ] && agy_doctor_ok "ca" "bundle exists: $AGY_CERT_FILE" && agy_doctor_path_detail "bundle" "$AGY_CERT_FILE" || agy_doctor_fail "ca" "bundle missing: $AGY_CERT_FILE"
+    [ -r "$AGY_RESOLV_CONF" ] && agy_doctor_ok "resolver" "source readable: $AGY_RESOLV_CONF" && agy_doctor_path_detail "source" "$AGY_RESOLV_CONF" || agy_doctor_fail "resolver" "source unreadable: $AGY_RESOLV_CONF"
 
     if agy_native_resolver_ok; then
-        agy_doctor_ok "resolver fd $AGY_RESOLVER_FD can be opened"
+        agy_doctor_ok "resolver" "fd $AGY_RESOLVER_FD can be opened"
     else
-        agy_doctor_fail "resolver fd $AGY_RESOLVER_FD cannot be opened from $AGY_RESOLV_CONF"
+        agy_doctor_fail "resolver" "fd $AGY_RESOLVER_FD cannot be opened from $AGY_RESOLV_CONF"
     fi
 
     if ! resolver_counts="$(agy_runtime_resolver_counts "$AGY_PATCHED" 2>/dev/null)"; then
@@ -2741,39 +2808,40 @@ agy_doctor() {
     etc_count="$(printf '%s' "$resolver_counts" | awk '{print $1}')"
     fd33_count="$(printf '%s' "$resolver_counts" | awk '{print $2}')"
     if [ "$etc_count" = "0" ] && [ "$fd33_count" != "0" ] && [ "$fd33_count" != "missing" ]; then
-        agy_doctor_ok "runtime resolver rewrite present (/etc=$etc_count fd33=$fd33_count)"
+        agy_doctor_ok "rewrite" "runtime resolver present (/etc=$etc_count fd33=$fd33_count)"
     else
-        agy_doctor_fail "runtime resolver rewrite unexpected (/etc=$etc_count fd33=$fd33_count)"
+        agy_doctor_fail "rewrite" "runtime resolver unexpected (/etc=$etc_count fd33=$fd33_count)"
     fi
 
     if command -v patchelf >/dev/null 2>&1 && [ -x "$AGY_PATCHED" ]; then
         interp="$(patchelf --print-interpreter "$AGY_PATCHED" 2>/dev/null || true)"
-        [ "$interp" = "$AGY_LOADER" ] && agy_doctor_ok "runtime interpreter matches loader" || agy_doctor_fail "runtime interpreter mismatch: ${interp:-unknown}"
+        [ "$interp" = "$AGY_LOADER" ] && agy_doctor_ok "interpreter" "runtime interpreter matches loader" || agy_doctor_fail "interpreter" "runtime interpreter mismatch: ${interp:-unknown}"
     else
-        agy_doctor_warn 'patchelf unavailable or runtime missing; skipped interpreter check'
+        agy_doctor_warn "interpreter" 'patchelf unavailable or runtime missing; skipped interpreter check'
     fi
 
     if [ -x "$AGY_PATCHED" ] && [ -x "$AGY_LOADER" ] && [ -r "$AGY_RESOLV_CONF" ]; then
         patched_version="$(AGY_SKIP_AUTO_UPDATE=1 agy_run_candidate "$AGY_PATCHED" --version 2>/dev/null || true)"
-        [ -n "$patched_version" ] && agy_doctor_ok "patched runtime starts: $patched_version" || agy_doctor_fail 'patched runtime --version failed'
+        [ -n "$patched_version" ] && agy_doctor_ok "start" "patched runtime starts: $patched_version" || agy_doctor_fail 'start' 'patched runtime --version failed'
     fi
 
+    agy_doctor_section "State"
     case "${LAST_KILL_SWITCH_STATUS:-}" in
         ok)
-            agy_doctor_ok "upstream update kill switch verified at ${LAST_KILL_SWITCH_AT:-unknown}"
+            agy_doctor_ok "kill-switch" "upstream update kill switch verified at ${LAST_KILL_SWITCH_AT:-unknown}"
             ;;
         failed)
-            agy_doctor_warn "upstream update kill switch failed or was unsupported${LAST_KILL_SWITCH_CASE:+: $LAST_KILL_SWITCH_CASE}"
+            agy_doctor_warn "kill-switch" "upstream update kill switch failed or was unsupported${LAST_KILL_SWITCH_CASE:+: $LAST_KILL_SWITCH_CASE}"
             ;;
         *)
-            agy_doctor_ok 'upstream update kill switch status not recorded yet'
+            agy_doctor_ok "kill-switch" 'upstream update kill switch status not recorded yet'
             ;;
     esac
 
     if agy_needs_repatch; then
-        agy_doctor_warn 'state/runtime drift detected; run agy setup'
+        agy_doctor_warn "drift" 'state/runtime drift detected; run agy setup'
     else
-        agy_doctor_ok 'state matches current raw/runtime hashes'
+        agy_doctor_ok "drift" 'state matches current raw/runtime hashes'
     fi
 
     last_case_path="$(agy_last_case_path 2>/dev/null || true)"
@@ -2797,7 +2865,7 @@ else:
 PY
 )"
         if [ -n "$last_build_profile" ]; then
-            agy_doctor_warn "last runtime build profile: $last_build_profile"
+            agy_doctor_warn "build-profile" "last runtime build profile: $last_build_profile"
         fi
     fi
 
@@ -2807,16 +2875,17 @@ PY
         if [ "${VERIFIED_ENTRYPOINT:-}" = "agy" ] \
             && [ "${VERIFIED_RAW_SHA256:-}" = "$current_raw_hash" ] \
             && [ "${VERIFIED_PATCHED_SHA256:-}" = "$current_patched_hash" ]; then
-            agy_doctor_ok "last successful agy runtime tuple matches current files: $VERIFIED_AT"
+            agy_doctor_ok "tuple" "last successful agy runtime tuple matches current files: $VERIFIED_AT"
         else
-            agy_doctor_warn 'last successful agy runtime tuple differs from current files'
+            agy_doctor_warn "tuple" 'last successful agy runtime tuple differs from current files'
         fi
     else
-        agy_doctor_ok 'last successful agy runtime tuple not recorded yet'
+        agy_doctor_ok "tuple" 'last successful agy runtime tuple not recorded yet'
     fi
 
+    agy_doctor_section "Registry"
     if [ -f "$AGY_REGISTRY_FILE" ]; then
-        agy_doctor_ok "registry file exists: $AGY_REGISTRY_FILE"
+        agy_doctor_ok "registry" "file exists: $AGY_REGISTRY_FILE"
         for tuple_name in ACTIVE_TUPLE_ID PREFERRED_TUPLE_ID VERIFIED_TUPLE_ID; do
             tuple_id="${!tuple_name:-}"
             [ -z "$tuple_id" ] && continue
@@ -2824,17 +2893,42 @@ PY
             wrapper_id="$(agy_registry_runtime_field "$tuple_id" wrapper_id)"
             runtime_path="$(agy_registry_runtime_field "$tuple_id" path)"
             if [ -n "$raw_id" ] && [ -n "$wrapper_id" ] && [ -x "$runtime_path" ]; then
-                agy_doctor_ok "$tuple_name registry tuple exists: $tuple_id"
+                agy_doctor_ok "$tuple_name" "registry tuple exists: $tuple_id"
             else
-                agy_doctor_warn "$tuple_name registry tuple incomplete or missing runtime: $tuple_id"
+                agy_doctor_warn "$tuple_name" "registry tuple incomplete or missing runtime: $tuple_id"
             fi
         done
     else
-        agy_doctor_warn "registry file missing: $AGY_REGISTRY_FILE"
+        agy_doctor_warn "registry" "file missing: $AGY_REGISTRY_FILE"
     fi
 
-    [ -f "$AGY_STATE_FILE" ] && agy_doctor_ok "state file exists: $AGY_STATE_FILE" || agy_doctor_warn "state file missing: $AGY_STATE_FILE"
-    printf 'summary: %s failure(s), %s warning(s)\n' "$failures" "$warnings"
+    [ -f "$AGY_STATE_FILE" ] && agy_doctor_ok "state" "file exists: $AGY_STATE_FILE" || agy_doctor_warn "state" "file missing: $AGY_STATE_FILE"
+    if [ "${#notes[@]}" -gt 0 ]; then
+        printf '\n%s\n' "$(agy_doctor_bold 'Notes')"
+        for note in "${notes[@]}"; do
+            IFS='|' read -r note_name note_text <<EOF
+$note
+EOF
+            agy_doctor_note_line "$note_name" "$note_text"
+        done
+    fi
+    agy_doctor_divider
+    if [ "$failures" -gt 0 ]; then
+        summary_status="fail"
+        summary_tail="$(agy_doctor_bold "$(agy_doctor_red 'fail')")"
+    elif [ "$warnings" -gt 0 ]; then
+        summary_status="warn"
+        summary_tail="$(agy_doctor_bold "$(agy_doctor_yellow 'warn')")"
+    else
+        summary_status="ok"
+        summary_tail="$(agy_doctor_bold "$(agy_doctor_green 'ok')")"
+    fi
+    printf '%s %s · %s %s · %s %s · %s %s %s\n' \
+        "$(agy_doctor_dim "$ok_count")" "$(agy_doctor_green 'ok')" \
+        "$(agy_doctor_dim "$idle_count")" "$(agy_doctor_dim 'idle')" \
+        "$(agy_doctor_dim "$warnings")" "$(agy_doctor_yellow 'warn')" \
+        "$(agy_doctor_dim "$failures")" "$(agy_doctor_red 'fail')" \
+        "$summary_tail"
     [ "$failures" -eq 0 ]
 }
 
