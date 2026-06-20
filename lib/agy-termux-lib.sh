@@ -2702,7 +2702,7 @@ agy_doctor() {
 
     agy_doctor_ansi() {
         local code="$1" text="$2"
-        if [ -t 1 ] || [ -t 2 ]; then
+        if [ -t 1 ]; then
             printf '\033[%sm%s\033[0m' "$code" "$text"
         else
             printf '%s' "$text"
@@ -2710,7 +2710,7 @@ agy_doctor() {
     }
     agy_doctor_std_ansi() {
         local code="$1" text="$2"
-        if [ -t 1 ] || [ -t 2 ]; then
+        if [ -t 1 ]; then
             printf '\033[%sm%s\033[39m' "$code" "$text"
         else
             printf '%s' "$text"
@@ -2722,14 +2722,14 @@ agy_doctor() {
     agy_doctor_yellow() { agy_doctor_std_ansi 33 "$1"; }
     agy_doctor_red() { agy_doctor_std_ansi 31 "$1"; }
     agy_doctor_cyan240() {
-        if [ -t 1 ] || [ -t 2 ]; then
+        if [ -t 1 ]; then
             printf '\033[38;5;240m%s\033[39m' "$1"
         else
             printf '%s' "$1"
         fi
     }
     agy_doctor_blue117() {
-        if [ -t 1 ] || [ -t 2 ]; then
+        if [ -t 1 ]; then
             printf '\033[38;5;117m%s\033[39m' "$1"
         else
             printf '%s' "$1"
