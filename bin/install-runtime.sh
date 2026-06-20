@@ -8,7 +8,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AGY_BACKUP_KEEP="${AGY_BACKUP_KEEP:-2}"
 AGY_PUBLIC_LAUNCHER="${PREFIX:-/data/data/com.termux/files/usr}/bin/agy"
 AGY_MANAGED_SHELL="${AGY_RUNTIME_DIR}/managed.sh"
-AGY_MANAGED_LAUNCHER_MARKER="${AGY_MANAGED_LAUNCHER_MARKER:-agy native managed launcher}"
+AGY_MANAGED_LAUNCHER_MARKER="${AGY_MANAGED_LAUNCHER_MARKER:-agy termux managed launcher}"
 
 usage() {
     cat <<'EOF'
@@ -77,7 +77,7 @@ agy_write_managed_shell() {
     mkdir -p "$AGY_RUNTIME_DIR"
     cat >"$AGY_RUNTIME_DIR/managed.sh.$$" <<EOF
 #!$PREFIX/bin/bash
-# agy native managed shell
+# agy termux managed shell
 set -euo pipefail
 unset LD_PRELOAD LD_LIBRARY_PATH
 # shellcheck disable=SC1091

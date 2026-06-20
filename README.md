@@ -1,4 +1,4 @@
-# agy native Termux runtime
+# agy Termux runtime
 
 This repository installs the official Linux ARM64 Antigravity CLI (`agy`) for
 Termux through a single public command at `$PREFIX/bin/agy`.
@@ -20,7 +20,7 @@ usable.
 | Command | Role |
 | :--- | :--- |
 | `agy` | Normal CLI entrypoint. Bare execution performs light preflight and may refresh wrapper support plus the upstream binary when needed. |
-| `agy help` | Show native help first, then wrapper help below it. |
+| `agy help` | Show upstream help first, then wrapper help below it. |
 | `agy use` | List cached, buildable, and remote tuples, then run the selected combination. |
 | `agy profile` | List numbered profiles or enter one by name. |
 | `agy profile NAME` | Enter the named profile and run the bare CLI in that profile home. |
@@ -33,15 +33,15 @@ usable.
 ## Files
 
 ```text
-~/.local/lib/agy/native/raw/agy
-~/.local/lib/agy/native/runtime/agy
-~/.local/lib/agy/native/runtime/managed.sh
-~/.local/lib/agy/native/runtime/lib.sh
-~/.local/lib/agy/native/runtime/build-runtime.py
-~/.local/lib/agy/native/runtime/wrapper-version.env
-~/.local/share/agy/native/registry.json
-~/.local/share/agy/native/state.json
-~/.local/share/agy/native/store/
+~/.local/lib/agy/termux/raw/agy
+~/.local/lib/agy/termux/runtime/agy
+~/.local/lib/agy/termux/runtime/managed.sh
+~/.local/lib/agy/termux/runtime/lib.sh
+~/.local/lib/agy/termux/runtime/build-runtime.py
+~/.local/lib/agy/termux/runtime/wrapper-version.env
+~/.local/share/agy/termux/registry.json
+~/.local/share/agy/termux/state.json
+~/.local/share/agy/termux/store/
 ~/.agy-profiles/
 $PREFIX/bin/agy
 ```
@@ -53,7 +53,7 @@ $PREFIX/bin/agy
 - No repo-pinned verified version file is shipped. The last successful bare
   `agy` runtime tuple is recorded locally after a normal exit.
 - Cached raw binaries, wrapper snapshots, and successful runtime tuples live in
-  `~/.local/share/agy/native/store/` and are described by `registry.json`.
+  `~/.local/share/agy/termux/store/` and are described by `registry.json`.
 - `AGY_PROFILE_HOME` can redirect the runtime auth/session home for
   `agy profile NAME`; profile directories live under `~/.agy-profiles/` by
   default.
@@ -73,5 +73,5 @@ $PREFIX/bin/agy
 
 ## Guides
 
-- [Native runtime guide](docs/AGY_TERMUX_NATIVE_GUIDE.md)
-- [Compiled launcher guide](docs/AGY_TERMUX_COMPILED_LAUNCHER.md)
+- [Termux runtime guide](docs/AGY_TERMUX_GUIDE.md)
+- [Termux launcher guide](docs/AGY_TERMUX_LAUNCHER.md)

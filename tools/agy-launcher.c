@@ -11,7 +11,7 @@
 
 #define AGY_RESOLVER_FD 33
 
-static const char agy_managed_launcher_marker[] __attribute__((used)) = "agy native managed launcher";
+static const char agy_managed_launcher_marker[] __attribute__((used)) = "agy termux managed launcher";
 
 static const char *env_or(const char *k, const char *d) {
     const char *v = getenv(k);
@@ -132,10 +132,10 @@ int main(int argc, char **argv) {
     if (!home || !*home) home = "/data/data/com.termux/files/home";
     if (!prefix || !*prefix) prefix = "/data/data/com.termux/files/usr";
     if (safe_join(default_resolver, sizeof(default_resolver), prefix, "etc/resolv.conf") < 0) return 125;
-    if (safe_join(default_runtime, sizeof(default_runtime), home, ".local/lib/agy/native/runtime/agy") < 0) return 125;
+    if (safe_join(default_runtime, sizeof(default_runtime), home, ".local/lib/agy/termux/runtime/agy") < 0) return 125;
     if (safe_join(default_loader, sizeof(default_loader), prefix, "glibc/lib/ld-linux-aarch64.so.1") < 0) return 125;
     if (safe_join(default_glibc, sizeof(default_glibc), prefix, "glibc/lib") < 0) return 125;
-    if (safe_join(default_shell, sizeof(default_shell), home, ".local/lib/agy/native/runtime/managed.sh") < 0) return 125;
+    if (safe_join(default_shell, sizeof(default_shell), home, ".local/lib/agy/termux/runtime/managed.sh") < 0) return 125;
     if (safe_join(default_bash, sizeof(default_bash), prefix, "bin/bash") < 0) return 125;
     if (safe_join(default_cert_file, sizeof(default_cert_file), prefix, "etc/tls/cert.pem") < 0) return 125;
     if (safe_join(default_cert_dir, sizeof(default_cert_dir), prefix, "etc/tls/certs") < 0) return 125;

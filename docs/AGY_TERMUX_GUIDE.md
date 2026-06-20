@@ -1,4 +1,4 @@
-# AGY Native Termux Runtime Guide
+# AGY Termux Runtime Guide
 
 This repository installs the official Linux ARM64 Antigravity CLI (`agy`) as a
 Termux-managed runtime with a single public launcher at `$PREFIX/bin/agy`.
@@ -8,7 +8,7 @@ Termux-managed runtime with a single public launcher at `$PREFIX/bin/agy`.
 | Command | Behavior |
 | :--- | :--- |
 | `agy` | Normal CLI entrypoint. Bare execution performs light preflight and may refresh wrapper support plus the upstream binary when needed. |
-| `agy help` | Show native help first, then wrapper help below it. |
+| `agy help` | Show upstream help first, then wrapper help below it. |
 | `agy use` | List cached, buildable, and remote tuples, then run the selected combination. |
 | `agy profile` | List numbered profiles or enter one by name. |
 | `agy profile NAME` | Enter the named profile and run the bare CLI in that profile home. |
@@ -25,18 +25,18 @@ setup and remove cleanup.
 ## Filesystem layout
 
 ```text
-~/.local/lib/agy/native/raw/agy
+~/.local/lib/agy/termux/raw/agy
   Raw official Linux ARM64 agy binary. Never patch this file in place.
 
-~/.local/lib/agy/native/runtime/agy
+~/.local/lib/agy/termux/runtime/agy
   Patched runtime copy produced from raw/agy.
 
-~/.local/lib/agy/native/runtime/managed.sh
+~/.local/lib/agy/termux/runtime/managed.sh
   Managed shell entrypoint used by launcher fallback paths.
 
-~/.local/lib/agy/native/runtime/lib.sh
-~/.local/lib/agy/native/runtime/build-runtime.py
-~/.local/lib/agy/native/runtime/wrapper-version.env
+~/.local/lib/agy/termux/runtime/lib.sh
+~/.local/lib/agy/termux/runtime/build-runtime.py
+~/.local/lib/agy/termux/runtime/wrapper-version.env
   Installed runtime support files.
 
 ~/.agy-profiles/
@@ -46,18 +46,18 @@ $PREFIX/bin/agy
   Public entrypoint. Prefer a compiled Bionic launcher; use shell fallback when
   clang is unavailable during installation.
 
-~/.local/share/agy/native/state.json
+~/.local/share/agy/termux/state.json
   Runtime state file recording raw/runtime hashes and the last successful bare
   `agy` runtime tuple.
 
-~/.local/share/agy/native/registry.json
+~/.local/share/agy/termux/registry.json
   Registry of raw binary snapshots, wrapper snapshots, and successful runtime
   tuple caches.
 
-~/.local/share/agy/native/store/
+~/.local/share/agy/termux/store/
   Cache root for raw binaries, wrapper snapshots, and successful runtime tuples.
 
-~/.local/share/agy/native/doctor/
+~/.local/share/agy/termux/doctor/
   Local diagnostic cases created after non-auth runtime failures.
 ```
 
@@ -101,7 +101,7 @@ installer fetches the current upstream binary and builds the patched runtime.
 support first, then checks the upstream manifest, verifies checksums, builds a
 patched candidate with the selected wrapper snapshot, smoke-tests it with
 `--version`, and promotes raw/runtime files only after validation while holding
-the native state lock.
+the Termux state lock.
 
 ### `agy use`
 
@@ -124,7 +124,7 @@ selector input.
 ### `agy remove`
 
 `agy remove` removes this repository's managed Termux runtime surface:
-`$PREFIX/bin/agy`, `~/.local/lib/agy/native`, `~/.local/share/agy/native`,
+`$PREFIX/bin/agy`, `~/.local/lib/agy/termux`, `~/.local/share/agy/termux`,
 obsolete shim paths, and PATH blocks that were created by older installers. It does
 not remove user Antigravity/OAuth config outside those managed runtime paths.
 

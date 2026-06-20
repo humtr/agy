@@ -1,4 +1,4 @@
-# AGY Compiled Launcher Guide
+# AGY Termux Launcher Guide
 
 `tools/agy-launcher.c` builds the preferred `$PREFIX/bin/agy` entrypoint for
 Termux. It is a small Bionic executable that decides whether to enter the local
@@ -9,7 +9,7 @@ managed shell path or execute the patched Linux ARM64 runtime directly.
 | Input | Route |
 | :--- | :--- |
 | bare `agy` | managed shell path for light preflight and safe wrapper/binary refresh |
-| `agy help` | managed shell path for native help plus wrapper help summary |
+| `agy help` | managed shell path for upstream help plus wrapper help summary |
 | `agy use` | managed shell path for cached/buildable/remote tuple selection and execution |
 | `agy profile` | managed shell path for numbered profile listing and profile entry |
 | `agy profile NAME` | managed shell path for profile entry |
@@ -33,10 +33,10 @@ For passthrough commands the launcher:
 3. sets default `GODEBUG=netdns=go` and Termux CA variables;
 4. executes `$PREFIX/glibc/lib/ld-linux-aarch64.so.1` with `--library-path`;
 5. injects the internal upstream updater kill-switch base URL;
-6. passes `~/.local/lib/agy/native/runtime/agy` and the original CLI arguments.
+6. passes `~/.local/lib/agy/termux/runtime/agy` and the original CLI arguments.
 
 If resolver setup or loader exec fails, the launcher attempts the installed
-managed shell at `~/.local/lib/agy/native/runtime/managed.sh`.
+managed shell at `~/.local/lib/agy/termux/runtime/managed.sh`.
 
 ## Debugging
 

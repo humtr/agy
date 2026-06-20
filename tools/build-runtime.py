@@ -465,14 +465,14 @@ def main() -> int:
     args = parse_args()
     input_omitted = args.input is None
     src = (
-        Path.home() / ".local/lib/agy/native/raw/agy"
+        Path.home() / ".local/lib/agy/termux/raw/agy"
         if input_omitted
         else Path(args.input).expanduser()
     )
     if args.output:
         dst = Path(args.output).expanduser()
     elif input_omitted:
-        dst = Path.home() / ".local/lib/agy/native/runtime/agy"
+        dst = Path.home() / ".local/lib/agy/termux/runtime/agy"
     else:
         dst = Path(str(src) + ".runtime")
 

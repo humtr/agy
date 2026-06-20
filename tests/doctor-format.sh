@@ -10,7 +10,7 @@ fail() {
 
 output="$(bash "$ROOT_DIR/bin/install-runtime.sh" doctor)"
 
-printf '%s\n' "$output" | grep -Eq '^agy doctor v[^[:space:]]+ · Termux native$' \
+printf '%s\n' "$output" | grep -Eq '^agy doctor v[^[:space:]]+ · Termux runtime$' \
     || fail "title line missing or changed"
 printf '%s\n' "$output" | grep -Fqx 'Installation' \
     || fail "installation section missing"

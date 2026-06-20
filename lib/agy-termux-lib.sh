@@ -5,17 +5,17 @@ AGY_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGY_PROJECT_ROOT="${AGY_PROJECT_ROOT:-$(cd "$AGY_LIB_DIR/.." && pwd)}"
 AGY_HOME="${AGY_HOME:-$HOME}"
 AGY_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
-AGY_NATIVE_ROOT="${AGY_NATIVE_ROOT:-$AGY_HOME/.local/lib/agy/native}"
-AGY_RAW="${AGY_RAW:-$AGY_NATIVE_ROOT/raw/agy}"
-AGY_RUNTIME_DIR="${AGY_RUNTIME_DIR:-$AGY_NATIVE_ROOT/runtime}"
+AGY_TERMUX_ROOT="${AGY_TERMUX_ROOT:-$AGY_HOME/.local/lib/agy/termux}"
+AGY_RAW="${AGY_RAW:-$AGY_TERMUX_ROOT/raw/agy}"
+AGY_RUNTIME_DIR="${AGY_RUNTIME_DIR:-$AGY_TERMUX_ROOT/runtime}"
 AGY_PATCHED="${AGY_PATCHED:-$AGY_RUNTIME_DIR/agy}"
 AGY_MANAGED_SHELL="${AGY_MANAGED_SHELL:-$AGY_RUNTIME_DIR/managed.sh}"
-AGY_STATE_DIR="${AGY_STATE_DIR:-$AGY_HOME/.local/share/agy/native}"
+AGY_STATE_DIR="${AGY_STATE_DIR:-$AGY_HOME/.local/share/agy/termux}"
 AGY_STATE_FILE="${AGY_STATE_FILE:-$AGY_STATE_DIR/state.json}"
 AGY_REGISTRY_FILE="${AGY_REGISTRY_FILE:-$AGY_STATE_DIR/registry.json}"
 AGY_STORE_DIR="${AGY_STORE_DIR:-$AGY_STATE_DIR/store}"
 AGY_DOCTOR_BASE="${AGY_DOCTOR_BASE:-$AGY_STATE_DIR/doctor}"
-AGY_LOCK_FILE="${AGY_LOCK_FILE:-$AGY_STATE_DIR/native.lock}"
+AGY_LOCK_FILE="${AGY_LOCK_FILE:-$AGY_STATE_DIR/termux.lock}"
 AGY_LOCK_WAIT_SECONDS="${AGY_LOCK_WAIT_SECONDS:-30}"
 AGY_DIAG_KEEP="${AGY_DIAG_KEEP:-20}"
 AGY_STORE_KEEP_RAW="${AGY_STORE_KEEP_RAW:-5}"
@@ -37,7 +37,7 @@ AGY_RESOLVER_FD=33
 AGY_RESOLVER_PROBE_HOST="${AGY_RESOLVER_PROBE_HOST:-oauth2.googleapis.com}"
 AGY_REPO_URL="${AGY_REPO_URL:-https://github.com/humtr/agy.git}"
 AGY_BRANCH="${AGY_BRANCH:-main}"
-AGY_MANAGED_LAUNCHER_MARKER="${AGY_MANAGED_LAUNCHER_MARKER:-agy native managed launcher}"
+AGY_MANAGED_LAUNCHER_MARKER="${AGY_MANAGED_LAUNCHER_MARKER:-agy termux managed launcher}"
 AGY_MANIFEST_URL="${AGY_MANIFEST_URL:-https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_arm64.json}"
 AGY_UPSTREAM_UPDATE_DISABLED_BASE_URL="${AGY_UPSTREAM_UPDATE_DISABLED_BASE_URL:-http://127.0.0.1:9/disabled}"
 AGY_AUTO_UPDATE_TIMEOUT="${AGY_AUTO_UPDATE_TIMEOUT:-4}"
@@ -1009,7 +1009,7 @@ agy_write_state() {
     agy_state_write_json
 }
 
-agy_native_resolver_ok() {
+agy_termux_resolver_ok() {
     [ -r "$AGY_RESOLV_CONF" ] || return 1
     (
         exec 33<"$AGY_RESOLV_CONF"
@@ -1047,7 +1047,7 @@ agy_runtime_command() {
         GODEBUG="${GODEBUG:-netdns=go}" \
         SSL_CERT_FILE="$AGY_CERT_FILE" \
         "${cert_dir_env[@]}")
-    if ! agy_native_resolver_ok; then
+    if ! agy_termux_resolver_ok; then
         printf 'agy: resolver source is unavailable: %s\n' "$AGY_RESOLV_CONF" >&2
         return 66
     fi
@@ -1074,7 +1074,7 @@ agy_profile_validate_name() {
         ""|default)
             return 0
             ;;
-        native|-*|.*|*/*|*..*|*[[:space:]]*)
+        termux|-*|.*|*/*|*..*|*[[:space:]]*)
             return 1
             ;;
     esac
@@ -1096,7 +1096,7 @@ agy_list_profiles() {
     [ -d "$root" ] || return 0
     find "$root" -mindepth 1 -maxdepth 1 -type d 2>/dev/null \
         | sed -n 's#.*/##p' \
-        | grep -Ev '^(default|native)$' \
+        | grep -Ev '^(default|termux)$' \
         | grep -Ev '^[.]' \
         | LC_ALL=C sort -f
 }
@@ -1390,7 +1390,7 @@ agy_use_print_candidates() {
     latest_wrapper_version="$(agy_registry_wrapper_field "$latest_wrapper_id" version)"
     latest_wrapper_commit="$(agy_registry_wrapper_field "$latest_wrapper_id" commit)"
 
-    agy_print_header "agy use" "Select native runtime configuration"
+    agy_print_header "agy use" "Select Termux runtime configuration"
 
     while IFS=$'\t' read -r kind tuple_id raw_id wrapper_id raw_version wrapper_version wrapper_commit flags runtime_path; do
         [ -n "$tuple_id" ] || continue
@@ -1754,7 +1754,7 @@ agy_make_case() {
         printf 'cert_file=%s exists=%s\n' "$AGY_CERT_FILE" "$([ -f "$AGY_CERT_FILE" ] && echo yes || echo no)"
     } >"$case_dir/env.log"
     {
-        printf 'You are diagnosing a Termux native agy wrapper failure.\n\n'
+        printf 'You are diagnosing a Termux runtime agy wrapper failure.\n\n'
         printf 'Case path: %s\n' "$case_dir"
         printf 'Use safe.log and env.log. Treat raw.log as sensitive local evidence only.\n\n'
         printf 'Requirements:\n'
@@ -2601,8 +2601,8 @@ agy_remove_managed_launcher() {
 
 agy_remove_rc_path_block() {
     local rc="$1" marker_begin marker_end
-    marker_begin="# >>> agy native path >>>"
-    marker_end="# <<< agy native path <<<"
+    marker_begin="# >>> agy termux path >>>"
+    marker_end="# <<< agy termux path <<<"
     [ -f "$rc" ] || return 0
     grep -Fq "$marker_begin" "$rc" 2>/dev/null || return 0
     python3 - "$rc" "$marker_begin" "$marker_end" <<'PY'
@@ -2657,7 +2657,7 @@ agy_remove_run() {
     printf 'agy remove: removing managed Termux runtime files...\n' >&2
     agy_remove_managed_launcher "$AGY_PREFIX/bin/agy"
     agy_cleanup_obsolete_runtime_surface
-    agy_remove_tree "$AGY_NATIVE_ROOT"
+    agy_remove_tree "$AGY_TERMUX_ROOT"
     agy_remove_tree "$AGY_STATE_DIR"
     agy_remove_tree "$AGY_HOME/.local/glibc-shim"
     printf 'agy remove: completed. OAuth/user Antigravity config outside the managed runtime was not removed.\n' >&2
@@ -2764,7 +2764,7 @@ agy_doctor() {
         printf '%s\n' "$(agy_doctor_dim '─────────────────────────────────────────────────────────────')"
     }
     patched_version="$(AGY_SKIP_AUTO_UPDATE=1 agy_run_candidate "$AGY_PATCHED" --version 2>/dev/null || true)"
-    printf '%s %s\n' "$(agy_doctor_bold 'agy doctor')" "$(agy_doctor_dim "v${patched_version:-unknown} · Termux native")"
+    printf '%s %s\n' "$(agy_doctor_bold 'agy doctor')" "$(agy_doctor_dim "v${patched_version:-unknown} · Termux runtime")"
     agy_doctor_divider
 
     agy_doctor_section "Installation"
@@ -2796,7 +2796,7 @@ agy_doctor() {
     [ -f "$AGY_CERT_FILE" ] && agy_doctor_ok "ca" "bundle exists: $AGY_CERT_FILE" && agy_doctor_path_detail "bundle" "$AGY_CERT_FILE" || agy_doctor_fail "ca" "bundle missing: $AGY_CERT_FILE"
     [ -r "$AGY_RESOLV_CONF" ] && agy_doctor_ok "resolver" "source readable: $AGY_RESOLV_CONF" && agy_doctor_path_detail "source" "$AGY_RESOLV_CONF" || agy_doctor_fail "resolver" "source unreadable: $AGY_RESOLV_CONF"
 
-    if agy_native_resolver_ok; then
+    if agy_termux_resolver_ok; then
         agy_doctor_ok "resolver" "fd $AGY_RESOLVER_FD can be opened"
     else
         agy_doctor_fail "resolver" "fd $AGY_RESOLVER_FD cannot be opened from $AGY_RESOLV_CONF"
