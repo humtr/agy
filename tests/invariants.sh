@@ -22,12 +22,15 @@ require_executable() {
 }
 
 reject_grep() {
-    local pattern="$1"
+    local pattern="$1" output
     shift
-    if grep -RIn --binary-files=without-match --exclude='invariants.sh' --exclude-dir=.git "$pattern" "$@" >/tmp/agy-invariant-grep.out 2>/dev/null; then
-        cat /tmp/agy-invariant-grep.out >&2
+    output="$(mktemp "${TMPDIR:-/tmp}/agy-invariant-grep.XXXXXX")" || fail "could not create grep output file"
+    if grep -RIn --binary-files=without-match --exclude='invariants.sh' --exclude-dir=.git "$pattern" "$@" >"$output" 2>/dev/null; then
+        cat "$output" >&2
+        rm -f "$output"
         fail "forbidden pattern found: $pattern"
     fi
+    rm -f "$output"
 }
 
 require_grep() {
