@@ -65,6 +65,8 @@ $PREFIX/bin/agy
   paths and AGY-marked rc PATH blocks. It does not remove the current
   `~/.local/lib/agy/termux` runtime root or `~/.local/share/agy/termux` state
   root; full managed runtime removal is reserved for `agy remove`.
+- Run `bash tests/run-all.sh` before publishing wrapper changes. It runs shell
+  syntax checks, focused behavior tests, and repository invariants.
 
 ## Troubleshooting
 

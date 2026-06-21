@@ -156,6 +156,18 @@ not remove user Antigravity/OAuth config outside those managed runtime paths.
 It exits non-zero when required checks fail and prints warning counts for
 recoverable drift or optional missing metadata.
 
+## Test and invariant checks
+
+Before publishing wrapper changes, run:
+
+```bash
+bash tests/run-all.sh
+```
+
+The run-all script executes shell syntax checks, focused behavior tests for
+doctor formatting, metadata fail-closed behavior, obsolete cleanup boundaries,
+and repository invariants that keep the public Termux runtime surface aligned.
+
 ## Auth policy
 
 The wrapper never runs `agy auth login` automatically. OAuth must remain
