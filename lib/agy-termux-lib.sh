@@ -2632,6 +2632,13 @@ PY
     printf 'removed PATH block from %s\n' "$rc"
 }
 
+# Obsolete cleanup policy:
+# Older pre-release AGY installers created helper PATH shims outside the current
+# managed Termux runtime surface. setup/support may remove only these fixed
+# legacy file/link paths plus rc PATH blocks carrying AGY's explicit markers.
+# Directories are skipped, and the current managed runtime/state roots are not
+# removed by this cleanup path. Full managed runtime removal remains the job of
+# `agy remove`.
 agy_remove_obsolete_control_shims() {
     local path
     for path in \

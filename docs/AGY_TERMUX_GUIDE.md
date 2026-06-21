@@ -22,6 +22,15 @@ Do not add a second public lifecycle command. `agy profile` is a selector
 entrypoint, not a management command. Obsolete helper paths are removed during
 setup and remove cleanup.
 
+## Obsolete cleanup policy
+
+AGY's current public surface is the managed Termux runtime rooted at
+`~/.local/lib/agy/termux`, the state root at `~/.local/share/agy/termux`, and
+the single launcher at `$PREFIX/bin/agy`. setup/support cleanup is limited to
+fixed pre-release helper shim file/link paths and rc PATH blocks marked by older
+AGY installers. It skips directories and does not remove the current runtime or
+state roots. Full managed runtime removal is reserved for `agy remove`.
+
 ## Filesystem layout
 
 ```text

@@ -61,6 +61,10 @@ $PREFIX/bin/agy
 - Bare `agy` may use the same safe refresh path quietly before launching.
 - `agy setup` is the recovery path for launcher/support refresh and runtime
   re-ensuring.
+- setup/support cleanup only removes fixed obsolete pre-release shim file/link
+  paths and AGY-marked rc PATH blocks. It does not remove the current
+  `~/.local/lib/agy/termux` runtime root or `~/.local/share/agy/termux` state
+  root; full managed runtime removal is reserved for `agy remove`.
 
 ## Troubleshooting
 
