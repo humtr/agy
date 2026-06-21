@@ -47,7 +47,7 @@ EOF
 printf 'export ZSHRC_UNTOUCHED=1
 ' >"$HOME/.zshrc"
 
-agy_cleanup_obsolete_runtime_surface >/tmp/agy-obsolete-cleanup.out
+agy_cleanup_obsolete_runtime_surface >"$tmp/obsolete-cleanup.out"
 
 for path in \
     "$HOME/.local/bin/agy" \
