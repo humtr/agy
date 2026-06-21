@@ -2745,9 +2745,9 @@ agy_doctor() {
     }
     agy_doctor_bold() { agy_doctor_ansi 1 "$1"; }
     agy_doctor_dim() { agy_doctor_ansi 2 "$1"; }
-    agy_doctor_green() { agy_doctor_std_ansi 32 "$1"; }
-    agy_doctor_yellow() { agy_doctor_std_ansi 33 "$1"; }
-    agy_doctor_red() { agy_doctor_std_ansi 31 "$1"; }
+    agy_doctor_green() { agy_doctor_std_ansi '38;5;10' "$1"; }
+    agy_doctor_yellow() { agy_doctor_std_ansi '38;5;214' "$1"; }
+    agy_doctor_red() { agy_doctor_std_ansi '38;5;196' "$1"; }
     agy_doctor_cyan240() {
         if [ "$doctor_color" = "1" ]; then
             printf '\033[38;5;240m%s\033[39m' "$1"
@@ -2764,19 +2764,19 @@ agy_doctor() {
     }
     agy_doctor_ok() {
         ok_count=$((ok_count + 1))
-        printf '  %s %-12s %s\n' "$(agy_doctor_green '✓')" "$(printf '%-12s' "$1")" "$(agy_doctor_dim "$2")"
+        printf '  %s %-14s %s\n' "$(agy_doctor_green '✓')" "$1" "$(agy_doctor_dim "$2")"
     }
     agy_doctor_warn() {
         warnings=$((warnings + 1))
         notes+=("$1|$2")
-        printf '  %s %-12s %s\n' "$(agy_doctor_yellow '⚠')" "$(printf '%-12s' "$1")" "$2"
+        printf '  %s %-14s %s\n' "$(agy_doctor_yellow '⚠')" "$1" "$2"
     }
     agy_doctor_fail() {
         failures=$((failures + 1))
-        printf '  %s %-12s %s\n' "$(agy_doctor_red '✗')" "$(printf '%-12s' "$1")" "$2"
+        printf '  %s %-14s %s\n' "$(agy_doctor_red '✗')" "$1" "$2"
     }
     agy_doctor_note_line() {
-        printf '   %s %-12s %s\n' "$(agy_doctor_yellow '⚠')" "$1" "$2"
+        printf '   %s %-14s %s\n' "$(agy_doctor_yellow '⚠')" "$1" "$2"
     }
     agy_doctor_detail() {
         printf '      %s %s\n' "$(agy_doctor_cyan240 "$(printf '%-24s' "$1")")" "$(agy_doctor_dim "$2")"
