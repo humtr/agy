@@ -148,21 +148,18 @@ agy_write_compiled_launcher() {
 }
 
 agy_install_support_files() {
-    local wrapper_commit
+    local metadata_src wrapper_commit
+    metadata_src="$ROOT_DIR/config/wrapper-version.env"
+    if [ ! -f "$metadata_src" ]; then
+        printf 'agy install: wrapper metadata missing: %s\n' "$metadata_src" >&2
+        return 70
+    fi
     mkdir -p "$AGY_RUNTIME_DIR" "$AGY_STATE_DIR"
     cp "$ROOT_DIR/lib/agy-termux-lib.sh" "$AGY_RUNTIME_DIR/lib.sh"
     chmod 755 "$AGY_RUNTIME_DIR/lib.sh"
     cp "$ROOT_DIR/tools/build-runtime.py" "$AGY_RUNTIME_DIR/build-runtime.py"
     chmod 755 "$AGY_RUNTIME_DIR/build-runtime.py"
-    if [ -f "$ROOT_DIR/config/wrapper-version.env" ]; then
-        cp "$ROOT_DIR/config/wrapper-version.env" "$AGY_RUNTIME_DIR/wrapper-version.env"
-    else
-        cat >"$AGY_RUNTIME_DIR/wrapper-version.env" <<'EOF'
-AGY_WRAPPER_VERSION=unknown
-AGY_WRAPPER_CHANNEL=unknown
-AGY_WRAPPER_REPO=humtr/agy
-EOF
-    fi
+    cp "$metadata_src" "$AGY_RUNTIME_DIR/wrapper-version.env"
     wrapper_commit="$(agy_source_commit)"
     {
         printf 'AGY_WRAPPER_COMMIT=%s\n' "$wrapper_commit"
