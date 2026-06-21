@@ -48,6 +48,11 @@ state roots. Full managed runtime removal is reserved for `agy remove`.
 ~/.local/lib/agy/termux/runtime/wrapper-version.env
   Installed runtime support files.
 
+The managed shell prefers the source checkout's `lib/agy-termux-lib.sh` when the
+checkout used by setup/support is still present. The copied runtime `lib.sh`
+remains a fallback for cases where the checkout was removed. This makes repo
+patches take effect in wrapper routes without a separate manual support refresh.
+
 ~/.agy-profiles/
   Optional profile home roots used by `agy profile NAME`.
 

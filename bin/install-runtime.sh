@@ -74,14 +74,25 @@ agy_prune_backups() {
 }
 
 agy_write_managed_shell() {
+    local repo_root_quoted
     mkdir -p "$AGY_RUNTIME_DIR"
+    printf -v repo_root_quoted '%q' "$ROOT_DIR"
     cat >"$AGY_RUNTIME_DIR/managed.sh.$$" <<EOF
 #!$PREFIX/bin/bash
 # agy termux managed shell
 set -euo pipefail
 unset LD_PRELOAD LD_LIBRARY_PATH
-# shellcheck disable=SC1091
-. "$AGY_RUNTIME_DIR/lib.sh"
+AGY_INSTALLED_REPO_ROOT=$repo_root_quoted
+AGY_MANAGED_REPO_LIB="\$AGY_INSTALLED_REPO_ROOT/lib/agy-termux-lib.sh"
+if [ -f "\$AGY_MANAGED_REPO_LIB" ]; then
+    AGY_PROJECT_ROOT="\$AGY_INSTALLED_REPO_ROOT"
+    export AGY_PROJECT_ROOT
+    # shellcheck disable=SC1091
+    . "\$AGY_MANAGED_REPO_LIB"
+else
+    # shellcheck disable=SC1091
+    . "$AGY_RUNTIME_DIR/lib.sh"
+fi
 agy_main "\$@"
 EOF
     chmod 755 "$AGY_RUNTIME_DIR/managed.sh.$$"

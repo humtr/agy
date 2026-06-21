@@ -96,5 +96,8 @@ require_grep 'tests/doctor-color\.sh' tests/run-all.sh 'doctor-color in run-all'
 require_grep 'tests/metadata-fail-closed\.sh' tests/run-all.sh 'metadata test in run-all'
 require_grep 'tests/obsolete-cleanup\.sh' tests/run-all.sh 'obsolete cleanup test in run-all'
 require_grep 'tests/invariants\.sh' tests/run-all.sh 'invariants in run-all'
+require_grep 'AGY_MANAGED_REPO_LIB' bin/install-runtime.sh 'managed shell source-checkout lib preference'
+require_grep 'AGY_INSTALLED_REPO_ROOT' bin/install-runtime.sh 'managed shell source-checkout root recording'
+require_grep 'falling back to the installed runtime copy' docs/AGY_TERMUX_LAUNCHER.md 'managed shell fallback docs'
 
 pass
