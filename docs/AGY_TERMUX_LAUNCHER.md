@@ -38,11 +38,9 @@ For passthrough commands the launcher:
 If resolver setup or loader exec fails, the launcher attempts the installed
 managed shell at `~/.local/lib/agy/termux/runtime/managed.sh`.
 
-The managed shell records the source checkout used by setup/support. When that
-checkout still exists, it sources `lib/agy-termux-lib.sh` directly from the
-checkout before falling back to the installed runtime copy. This keeps local repo
-patches visible to `agy doctor` and other wrapper routes without requiring a
-manual support refresh after every commit.
+The managed shell sources only the installed runtime support copy at
+`~/.local/lib/agy/termux/runtime/lib.sh`. Development checkouts are not trusted
+at runtime unless their contents have been installed through setup/support.
 
 ## Debugging
 

@@ -51,7 +51,7 @@ The run-all gate currently covers:
 
 - shell syntax checks for installer, library, and shell tests;
 - Python bytecode compilation for `tools/build-runtime.py`;
-- doctor output formatting, Codex-style color palette, color policy, and runtime support freshness;
+- doctor output formatting, Codex-style color palette, color policy, and installed runtime support isolation;
 - wrapper metadata fail-closed behavior;
 - obsolete cleanup boundaries;
 - repository invariants for the Termux runtime surface.
