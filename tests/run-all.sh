@@ -15,6 +15,7 @@ tests/doctor-format.sh
 tests/doctor-color.sh
 tests/metadata-fail-closed.sh
 tests/obsolete-cleanup.sh
+tests/installed-runtime-isolation.sh
 tests/invariants.sh
 tests/run-all.sh
 LIST
@@ -31,6 +32,9 @@ bash tests/metadata-fail-closed.sh
 
 printf 'run-all: obsolete-cleanup\n'
 bash tests/obsolete-cleanup.sh
+
+printf 'run-all: installed-runtime-isolation\n'
+bash tests/installed-runtime-isolation.sh
 
 printf 'run-all: invariants\n'
 bash tests/invariants.sh
