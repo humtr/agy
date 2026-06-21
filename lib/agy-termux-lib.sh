@@ -2942,13 +2942,13 @@ EOF
     agy_doctor_divider
     if [ "$failures" -gt 0 ]; then
         summary_status="fail"
-        summary_tail="$(agy_doctor_bold "$(agy_doctor_red 'fail')")"
+        summary_tail="$(agy_doctor_red 'fail')"
     elif [ "$warnings" -gt 0 ]; then
         summary_status="warn"
-        summary_tail="$(agy_doctor_bold "$(agy_doctor_yellow 'warn')")"
+        summary_tail="$(agy_doctor_yellow 'warn')"
     else
         summary_status="ok"
-        summary_tail="$(agy_doctor_bold "$(agy_doctor_green 'ok')")"
+        summary_tail="$(agy_doctor_green 'ok')"
     fi
     printf '%s %s · %s %s · %s %s · %s %s %s\n' \
         "$(agy_doctor_dim "$ok_count")" "$(agy_doctor_green 'ok')" \

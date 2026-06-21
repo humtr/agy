@@ -22,8 +22,31 @@ printf '%s\n' "$output" | grep -Fq "$esc[38;5;214mwarn" \
     || fail 'summary warn label does not use Codex orange'
 printf '%s\n' "$output" | grep -Fq "$esc[38;5;196mfail" \
     || fail 'summary fail label does not use Codex bright red'
-printf '%s\n' "$output" | grep -Eq "$esc\[1m$esc\[38;5;(10|214|196)m(ok|warn|fail)" \
-    || fail 'summary status is not bold Codex status color'
+summary_raw="$(printf '%s\n' "$output" | python3 -c 'import re,sys; ansi=re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]"); lines=sys.stdin.read().splitlines(); print(next((l for l in lines if " ok · " in ansi.sub("", l) and " fail " in ansi.sub("", l)), ""))')"
+[ -n "$summary_raw" ] || fail 'raw summary line missing'
+summary_line="$(printf '%s\n' "$summary_raw" | python3 -c 'import re,sys; ansi=re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]"); sys.stdout.write(ansi.sub("", sys.stdin.read()))')"
+[ -n "$summary_line" ] || fail 'plain summary line missing'
+printf '%s\n' "$summary_raw" | grep -Fq "$esc[38;5;10mok$esc[39m" \
+    || fail 'summary ok label is not Codex bright green'
+! printf '%s\n' "$summary_raw" | grep -Fq "$esc[1m" \
+    || fail 'summary line contains bold status styling'
+case "$summary_line" in
+    *' ok')
+        [ "$(printf '%s\n' "$summary_raw" | grep -Fo "$esc[38;5;10mok$esc[39m" | wc -l | tr -d ' ')" = "2" ] \
+            || fail 'summary ok label and final ok are not the same color sequence'
+        ;;
+    *' warn')
+        [ "$(printf '%s\n' "$summary_raw" | grep -Fo "$esc[38;5;214mwarn$esc[39m" | wc -l | tr -d ' ')" = "2" ] \
+            || fail 'summary warn label and final warn are not the same color sequence'
+        ;;
+    *' fail')
+        [ "$(printf '%s\n' "$summary_raw" | grep -Fo "$esc[38;5;196mfail$esc[39m" | wc -l | tr -d ' ')" = "2" ] \
+            || fail 'summary fail label and final fail are not the same color sequence'
+        ;;
+    *)
+        fail "unknown summary status: $summary_line"
+        ;;
+esac
 ! printf '%s\n' "$output" | grep -Fq "$esc[32m" \
     || fail 'legacy green ANSI 32 was emitted'
 ! printf '%s\n' "$output" | grep -Fq "$esc[33m" \
