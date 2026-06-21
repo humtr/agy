@@ -12,6 +12,7 @@ install.sh
 bin/install-runtime.sh
 lib/agy-termux-lib.sh
 tests/doctor-format.sh
+tests/doctor-color.sh
 tests/metadata-fail-closed.sh
 tests/obsolete-cleanup.sh
 tests/invariants.sh
@@ -21,6 +22,9 @@ python3 -m py_compile tools/build-runtime.py
 
 printf 'run-all: doctor-format\n'
 bash tests/doctor-format.sh
+
+printf 'run-all: doctor-color\n'
+bash tests/doctor-color.sh
 
 printf 'run-all: metadata-fail-closed\n'
 bash tests/metadata-fail-closed.sh

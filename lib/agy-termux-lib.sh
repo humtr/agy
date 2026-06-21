@@ -2706,10 +2706,30 @@ agy_doctor() {
     local active patched_version interp resolver_counts etc_count fd33_count last_case_path last_build_profile current_raw_hash current_patched_hash
     local current_raw_hash current_patched_hash tuple_name tuple_id raw_id wrapper_id runtime_path
     local -a notes=()
+    local doctor_color=0 doctor_color_mode="${AGY_DOCTOR_COLOR:-auto}"
+
+    case "$doctor_color_mode" in
+        always|1|yes|true|on)
+            doctor_color=1
+            ;;
+        never|0|no|false|off)
+            doctor_color=0
+            ;;
+        auto|"")
+            if [ -z "${NO_COLOR:-}" ] && [ -t 1 ]; then
+                doctor_color=1
+            fi
+            ;;
+        *)
+            if [ -z "${NO_COLOR:-}" ] && [ -t 1 ]; then
+                doctor_color=1
+            fi
+            ;;
+    esac
 
     agy_doctor_ansi() {
         local code="$1" text="$2"
-        if [ -t 1 ]; then
+        if [ "$doctor_color" = "1" ]; then
             printf '\033[%sm%s\033[0m' "$code" "$text"
         else
             printf '%s' "$text"
@@ -2717,7 +2737,7 @@ agy_doctor() {
     }
     agy_doctor_std_ansi() {
         local code="$1" text="$2"
-        if [ -t 1 ]; then
+        if [ "$doctor_color" = "1" ]; then
             printf '\033[%sm%s\033[39m' "$code" "$text"
         else
             printf '%s' "$text"
@@ -2729,14 +2749,14 @@ agy_doctor() {
     agy_doctor_yellow() { agy_doctor_std_ansi 33 "$1"; }
     agy_doctor_red() { agy_doctor_std_ansi 31 "$1"; }
     agy_doctor_cyan240() {
-        if [ -t 1 ]; then
+        if [ "$doctor_color" = "1" ]; then
             printf '\033[38;5;240m%s\033[39m' "$1"
         else
             printf '%s' "$1"
         fi
     }
     agy_doctor_blue117() {
-        if [ -t 1 ]; then
+        if [ "$doctor_color" = "1" ]; then
             printf '\033[38;5;117m%s\033[39m' "$1"
         else
             printf '%s' "$1"

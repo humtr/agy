@@ -48,6 +48,7 @@ require_file lib/agy-termux-lib.sh
 require_file tools/build-runtime.py
 require_file tools/agy-launcher.c
 require_file tests/doctor-format.sh
+require_file tests/doctor-color.sh
 require_file tests/metadata-fail-closed.sh
 require_file tests/obsolete-cleanup.sh
 require_file tests/run-all.sh
@@ -56,6 +57,7 @@ require_executable install.sh
 require_executable bin/install-runtime.sh
 require_executable tools/build-runtime.py
 require_executable tests/doctor-format.sh
+require_executable tests/doctor-color.sh
 require_executable tests/metadata-fail-closed.sh
 require_executable tests/obsolete-cleanup.sh
 require_executable tests/invariants.sh
@@ -90,6 +92,7 @@ require_grep 'does not remove the current' README.md 'README cleanup boundary'
 require_grep 'does not remove the current runtime' docs/AGY_TERMUX_GUIDE.md 'guide cleanup boundary'
 
 require_grep 'tests/doctor-format\.sh' tests/run-all.sh 'doctor-format in run-all'
+require_grep 'tests/doctor-color\.sh' tests/run-all.sh 'doctor-color in run-all'
 require_grep 'tests/metadata-fail-closed\.sh' tests/run-all.sh 'metadata test in run-all'
 require_grep 'tests/obsolete-cleanup\.sh' tests/run-all.sh 'obsolete cleanup test in run-all'
 require_grep 'tests/invariants\.sh' tests/run-all.sh 'invariants in run-all'
