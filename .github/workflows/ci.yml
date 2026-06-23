@@ -1,0 +1,13 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  release-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run release gates
+        run: bash tests/run-all.sh
