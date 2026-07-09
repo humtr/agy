@@ -13,6 +13,7 @@ managed shell path or execute the patched Linux ARM64 runtime directly.
 | `agy use` | managed shell path for cached/buildable/remote tuple selection and execution |
 | `agy profile` | managed shell path for numbered profile listing and profile entry |
 | `agy profile NAME` | managed shell path for profile entry |
+| `agy auth` | managed shell path for profile authentication status/reset |
 | `agy setup` | managed shell path for launcher/support refresh and `agy :` / `wrapper :` version rows |
 | `agy update` | managed shell path for wrapper refresh plus the Termux-safe binary update pipeline and `agy :` / `wrapper :` version rows |
 | `agy doctor` | managed shell path for diagnostics |

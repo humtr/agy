@@ -51,6 +51,7 @@ require_file tests/doctor-format.sh
 require_file tests/doctor-color.sh
 require_file tests/metadata-fail-closed.sh
 require_file tests/obsolete-cleanup.sh
+require_file tests/launcher-auth-route.sh
 require_file tests/installed-runtime-isolation.sh
 require_file tests/run-all.sh
 
@@ -61,6 +62,7 @@ require_executable tests/doctor-format.sh
 require_executable tests/doctor-color.sh
 require_executable tests/metadata-fail-closed.sh
 require_executable tests/obsolete-cleanup.sh
+require_executable tests/launcher-auth-route.sh
 require_executable tests/installed-runtime-isolation.sh
 require_executable tests/invariants.sh
 require_executable tests/run-all.sh
@@ -98,6 +100,7 @@ require_grep 'tests/doctor-color\.sh' tests/run-all.sh 'doctor-color in run-all'
 require_grep 'tests/metadata-fail-closed\.sh' tests/run-all.sh 'metadata test in run-all'
 require_grep 'tests/obsolete-cleanup\.sh' tests/run-all.sh 'obsolete cleanup test in run-all'
 require_grep 'tests/installed-runtime-isolation\.sh' tests/run-all.sh 'installed runtime isolation test in run-all'
+require_grep 'tests/launcher-auth-route\.sh' tests/run-all.sh 'launcher-auth-route in run-all'
 require_grep 'tests/invariants\.sh' tests/run-all.sh 'invariants in run-all'
 reject_grep 'AGY_MANAGED_REPO_LIB' bin/install-runtime.sh docs 'managed shell must not source development checkout lib'
 reject_grep 'AGY_INSTALLED_REPO_ROOT' bin/install-runtime.sh docs 'managed shell must not record development checkout root'

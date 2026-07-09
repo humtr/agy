@@ -63,6 +63,7 @@ static struct route decide_route(int argc, char **argv) {
     if (streq(argv[1], "setup")) return (struct route){ROUTE_MANAGED_SHELL, "setup route"};
     if (streq(argv[1], "update")) return (struct route){ROUTE_MANAGED_SHELL, "update route"};
     if (streq(argv[1], "help")) return (struct route){ROUTE_MANAGED_SHELL, "help route"};
+    if (streq(argv[1], "auth")) return (struct route){ROUTE_MANAGED_SHELL, "auth route"};
     if (streq(argv[1], "use")) return (struct route){ROUTE_MANAGED_SHELL, "use route"};
     if (streq(argv[1], "profile")) return (struct route){ROUTE_MANAGED_SHELL, "profile route"};
     if (streq(argv[1], "remove")) return (struct route){ROUTE_MANAGED_SHELL, "remove route"};
