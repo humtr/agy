@@ -41,6 +41,7 @@ AGY_MANAGED_LAUNCHER_MARKER="${AGY_MANAGED_LAUNCHER_MARKER:-agy termux managed l
 AGY_MANIFEST_URL="${AGY_MANIFEST_URL:-https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_arm64.json}"
 AGY_UPSTREAM_UPDATE_DISABLED_BASE_URL="${AGY_UPSTREAM_UPDATE_DISABLED_BASE_URL:-http://127.0.0.1:9/disabled}"
 AGY_AUTO_UPDATE_TIMEOUT="${AGY_AUTO_UPDATE_TIMEOUT:-4}"
+AGY_DOWNLOAD_TIMEOUT="${AGY_DOWNLOAD_TIMEOUT:-120}"
 AGY_REMOTE_CANDIDATE_LIMIT="${AGY_REMOTE_CANDIDATE_LIMIT:-10}"
 AGY_PROFILE_ROOT="${AGY_PROFILE_ROOT:-$HOME/.agy-profiles}"
 AGY_PROFILE_HOME="${AGY_PROFILE_HOME:-}"
@@ -1431,7 +1432,7 @@ agy_select_remote_raw() {
     local tmp_dir status actual_sha extracted raw_id
     tmp_dir=$(mktemp -d "$AGY_STATE_DIR/use-remote.XXXXXX") || return 1
     set +e
-    curl -fsSL --connect-timeout "$AGY_AUTO_UPDATE_TIMEOUT" --max-time "$AGY_AUTO_UPDATE_TIMEOUT" "$url" >"$tmp_dir/agy.tgz" 2>"$tmp_dir/download.log"
+    curl -fsSL --connect-timeout "$AGY_AUTO_UPDATE_TIMEOUT" --max-time "$AGY_DOWNLOAD_TIMEOUT" "$url" >"$tmp_dir/agy.tgz" 2>"$tmp_dir/download.log"
     status=$?
     set -e
     if [ "$status" -ne 0 ]; then
@@ -2420,9 +2421,9 @@ agy_update_broker_once() {
     fi
     set +e
     if [ "$network_mode" = "auto" ]; then
-        curl -fsSL --connect-timeout "$AGY_AUTO_UPDATE_TIMEOUT" --max-time "$AGY_AUTO_UPDATE_TIMEOUT" "$url" >"$tmp_dir/agy.tgz" 2>"$tmp_dir/update.log"
+        curl -fsSL --connect-timeout "$AGY_AUTO_UPDATE_TIMEOUT" --max-time "$AGY_DOWNLOAD_TIMEOUT" "$url" >"$tmp_dir/agy.tgz" 2>"$tmp_dir/update.log"
     else
-        curl -fsSL "$url" >"$tmp_dir/agy.tgz" 2>"$tmp_dir/update.log"
+        curl -fsSL --max-time "$AGY_DOWNLOAD_TIMEOUT" "$url" >"$tmp_dir/agy.tgz" 2>"$tmp_dir/update.log"
     fi
     status=$?
     set -e
