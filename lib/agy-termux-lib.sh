@@ -791,10 +791,11 @@ agy_registry_bootstrap_from_current() {
     agy_load_state
     now="$(date -Is)"
     agy_registry_record_current_wrapper
-    raw_version="${VERIFIED_VERSION:-${LAST_SEEN_UPSTREAM_VERSION:-}}"
-    if [ -z "$raw_version" ] && [ -x "$AGY_PATCHED" ]; then
+    raw_version=""
+    if [ -x "$AGY_PATCHED" ]; then
         raw_version="$(agy_current_version 2>/dev/null || true)"
     fi
+    raw_version="${raw_version:-${VERIFIED_VERSION:-${LAST_SEEN_UPSTREAM_VERSION:-}}}"
     if [ ! -x "$AGY_RAW" ] || [ ! -x "$AGY_PATCHED" ]; then
         return 0
     fi
