@@ -5,6 +5,7 @@ AGY_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGY_PROJECT_ROOT="${AGY_PROJECT_ROOT:-$(cd "$AGY_LIB_DIR/.." && pwd)}"
 AGY_HOME="${AGY_HOME:-$HOME}"
 AGY_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+export TMPDIR="${TMPDIR:-$AGY_PREFIX/tmp}"
 AGY_TERMUX_ROOT="${AGY_TERMUX_ROOT:-$AGY_HOME/.local/lib/agy/termux}"
 AGY_RAW="${AGY_RAW:-$AGY_TERMUX_ROOT/raw/agy}"
 AGY_RUNTIME_DIR="${AGY_RUNTIME_DIR:-$AGY_TERMUX_ROOT/runtime}"
@@ -1050,7 +1051,7 @@ agy_runtime_command() {
         SSL_CERT_FILE="$AGY_CERT_FILE" \
         "${cert_dir_env[@]}")
     if ! agy_termux_resolver_ok; then
-        printf 'agy: resolver source is unavailable: %s\n' "$AGY_RESOLV_CONF" >&2
+        printf 'resolver source is unavailable: %s\n' "$AGY_RESOLV_CONF" >&2
         return 66
     fi
     "${runtime_env[@]}" "$AGY_LOADER" --library-path "$AGY_GLIBC_LIB" "$executable" \
@@ -1178,11 +1179,11 @@ agy_bare_resume_prompt() {
             return 0
             ;;
         $'\e')
-            printf '  %sagy: cancelled.%s\n' "${C_MUTED}" "${T_RESET}" >&2
+            printf '  %scancelled.%s\n' "${C_MUTED}" "${T_RESET}" >&2
             return 130
             ;;
         *)
-            printf '  %sagy: invalid selection: %s%s\n' "${T_RED}" "$choice" "${T_RESET}" >&2
+            printf '  %sinvalid selection: %s%s\n' "${T_RED}" "$choice" "${T_RESET}" >&2
             return 2
             ;;
     esac
@@ -1256,7 +1257,7 @@ agy_run_bare_runtime() {
                 fi
             fi
             agy_state_clear_preferred_tuple
-            printf 'agy: previous tuple unavailable; using latest.\n' >&2
+            printf 'previous tuple unavailable; using latest.\n' >&2
             ;;
         latest)
             agy_state_clear_preferred_tuple
@@ -1267,7 +1268,7 @@ agy_run_bare_runtime() {
     fi
     agy_auto_update "$first" || return $?
     before=$(agy_sha256 "$AGY_RAW")
-    temp_raw="${TMPDIR:-/tmp}/agy_raw_$$"
+    temp_raw="${TMPDIR:-$AGY_PREFIX/tmp}/agy_raw_$$"
     : >"$temp_raw"
     set +e
     agy_load_state
@@ -1277,7 +1278,7 @@ agy_run_bare_runtime() {
     after=$(agy_sha256 "$AGY_RAW")
     if [ -n "$before" ] && [ -n "$after" ] && [ "$before" != "$after" ]; then
         agy_mark_raw_changed
-        printf 'agy: raw changed during execution; rebuilding runtime copy.\n' >&2
+        printf 'raw changed during execution; rebuilding runtime copy.\n' >&2
         agy_rebuild_runtime postflight-update
     fi
     if [ "$exit_code" -eq 0 ] || [ "$exit_code" -eq 130 ]; then
@@ -1285,7 +1286,7 @@ agy_run_bare_runtime() {
     fi
     if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 130 ]; then
         case_dir=$(agy_make_case "$exit_code" "$temp_raw")
-        printf 'agy failed with status %s.\n' "$exit_code" >&2
+        printf 'failed with status %s.\n' "$exit_code" >&2
         printf 'Termux diagnostic case created:\n  %s\n' "$case_dir" >&2
         printf 'Next:\n  agy doctor\n' >&2
     fi
@@ -1299,7 +1300,7 @@ agy_run_selected_runtime() {
     local before after temp_raw exit_code case_dir
 
     before=$(agy_sha256 "$AGY_RAW")
-    temp_raw="${TMPDIR:-/tmp}/agy_raw_$$"
+    temp_raw="${TMPDIR:-$AGY_PREFIX/tmp}/agy_raw_$$"
     : >"$temp_raw"
     set +e
     agy_load_state
@@ -1309,7 +1310,7 @@ agy_run_selected_runtime() {
     after=$(agy_sha256 "$AGY_RAW")
     if [ -n "$before" ] && [ -n "$after" ] && [ "$before" != "$after" ]; then
         agy_mark_raw_changed
-        printf 'agy: raw changed during execution; rebuilding runtime copy.\n' >&2
+        printf 'raw changed during execution; rebuilding runtime copy.\n' >&2
         agy_rebuild_runtime postflight-update
     fi
     if [ "$exit_code" -eq 0 ] || [ "$exit_code" -eq 130 ]; then
@@ -1317,7 +1318,7 @@ agy_run_selected_runtime() {
     fi
     if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 130 ]; then
         case_dir=$(agy_make_case "$exit_code" "$temp_raw")
-        printf 'agy failed with status %s.\n' "$exit_code" >&2
+        printf 'failed with status %s.\n' "$exit_code" >&2
         printf 'Termux diagnostic case created:\n  %s\n' "$case_dir" >&2
         printf 'Next:\n  agy doctor\n' >&2
     fi
@@ -1514,7 +1515,7 @@ agy_use_select_candidate() {
     fi
 
     if [ -z "$selected_kind" ]; then
-        printf 'agy use: unknown selection: %s\n' "$selection" >&2
+        printf 'use: unknown selection: %s\n' "$selection" >&2
         return 2
     fi
 
@@ -1530,7 +1531,7 @@ agy_use_select_candidate() {
         "$(agy_registry_wrapper_field "$selected_wrapper_id" commit)")"
 
     if ! agy_use_activate_tuple "$selected_tuple_id" "$selected_raw_id" "$selected_wrapper_id"; then
-        printf 'agy use: tuple unavailable: %s\n' "$selected_tuple_id" >&2
+        printf 'use: tuple unavailable: %s\n' "$selected_tuple_id" >&2
         return 77
     fi
     current_latest_raw_id="$(agy_registry_latest_raw_id)"
@@ -1554,7 +1555,7 @@ agy_use() {
         fi
         selection="$(agy_use_prompt_selection "${AGY_USE_MENU_COUNT:-0}")" || return $?
         if [ -z "$selection" ]; then
-            printf '  %sagy use: cancelled.%s\n' "${C_MUTED}" "${T_RESET}" >&2
+            printf '  %scancelled.%s\n' "${C_MUTED}" "${T_RESET}" >&2
             return 1
         fi
     fi
@@ -1570,17 +1571,17 @@ agy_profile_run() {
         return $?
     fi
     if ! agy_profile_validate_name "$profile"; then
-        printf 'agy profile: invalid profile name: %s\n' "$profile" >&2
+        printf 'profile: invalid profile name: %s\n' "$profile" >&2
         return 2
     fi
     if [ "$#" -ne 0 ]; then
-        printf 'agy profile: unexpected argument: %s\n' "$1" >&2
+        printf 'profile: unexpected argument: %s\n' "$1" >&2
         printf 'usage: agy profile [NAME]\n' >&2
         return 2
     fi
     profile_dir="$(agy_profile_dir "$profile")"
     if [ ! -d "$profile_dir" ]; then
-        printf 'agy profile: profile not found: %s\n' "$profile" >&2
+        printf 'profile: profile not found: %s\n' "$profile" >&2
         printf 'create it first: mkdir -p %s\n' "$profile_dir" >&2
         return 2
     fi
@@ -1592,7 +1593,7 @@ agy_profile_select() {
     root="$(agy_profile_root)"
     mapfile -t profiles < <(agy_list_profiles)
     if [ "${#profiles[@]}" -eq 0 ]; then
-        printf '  %sagy profile: no profiles found in %s%s\n' "${T_RED}" "$root" "${T_RESET}" >&2
+        printf '  %sprofile: no profiles found in %s%s\n' "${T_RED}" "$root" "${T_RESET}" >&2
         return 0
     fi
     if [ -t 0 ]; then
@@ -1620,12 +1621,12 @@ agy_profile_select() {
     fi
     choice="$(agy_prompt_choice 'profile> ' "${#profiles[@]}")" || {
         local prompt_status=$?
-        [ "$prompt_status" -eq 130 ] && printf '  %sagy profile: cancelled.%s\n' "${C_MUTED}" "${T_RESET}" >&2
+        [ "$prompt_status" -eq 130 ] && printf '  %scancelled.%s\n' "${C_MUTED}" "${T_RESET}" >&2
         return "$prompt_status"
     }
     case "$choice" in
         "")
-            printf '  %sagy profile: cancelled.%s\n' "${C_MUTED}" "${T_RESET}" >&2
+            printf '  %scancelled.%s\n' "${C_MUTED}" "${T_RESET}" >&2
             return 1
             ;;
         *[!0-9]*)
@@ -1635,13 +1636,13 @@ agy_profile_select() {
                     return $?
                 fi
             done
-            printf '  %sagy profile: unknown profile: %s%s\n' "${T_RED}" "$choice" "${T_RESET}" >&2
+            printf '  %sprofile: unknown profile: %s%s\n' "${T_RED}" "$choice" "${T_RESET}" >&2
             return 2
             ;;
     esac
     i="$choice"
     if [ "$i" -lt 1 ] || [ "$i" -gt "${#profiles[@]}" ]; then
-        printf '  %sagy profile: invalid selection: %s%s\n' "${T_RED}" "$choice" "${T_RESET}" >&2
+        printf '  %sinvalid selection: %s%s\n' "${T_RED}" "$choice" "${T_RESET}" >&2
         return 2
     fi
     profile="${profiles[$((i - 1))]}"
@@ -1832,7 +1833,7 @@ agy_with_lock() {
     if command -v flock >/dev/null 2>&1; then
         (
             if ! flock -w "$AGY_LOCK_WAIT_SECONDS" -x 9; then
-                printf 'agy: another mutation operation is in progress (lock: %s).\n' "$AGY_LOCK_FILE" >&2
+                printf 'another mutation operation is in progress (lock: %s).\n' "$AGY_LOCK_FILE" >&2
                 return 99
             fi
             "$@"
@@ -1843,7 +1844,7 @@ agy_with_lock() {
             sleep 1
             waited=$((waited + 1))
             if [ "$waited" -ge "$AGY_LOCK_WAIT_SECONDS" ]; then
-                printf 'agy: another mutation operation is in progress (lock: %s).\n' "$lock" >&2
+                printf 'another mutation operation is in progress (lock: %s).\n' "$lock" >&2
                 return 99
             fi
         done
@@ -1903,7 +1904,7 @@ agy_rebuild_runtime_unlocked() {
     agy_write_state
     agy_registry_prune
     rm -rf "$tmp_dir"
-    printf 'agy: runtime ready (%s)\n' "$reason" >&2
+    printf 'runtime ready (%s)\n' "$reason" >&2
 }
 
 agy_rebuild_runtime() {
@@ -1912,15 +1913,15 @@ agy_rebuild_runtime() {
 
 agy_preflight() {
     if agy_needs_repatch; then
-        printf 'agy: preparing runtime copy...\n' >&2
+        printf 'preparing runtime copy...\n' >&2
         agy_rebuild_runtime preflight
     fi
 }
 
 agy_cheap_launch_guard() {
-    [ -x "$AGY_PATCHED" ] || { printf 'agy: patched runtime missing: %s\n' "$AGY_PATCHED" >&2; return 65; }
-    [ -x "$AGY_LOADER" ] || { printf 'agy: loader missing: %s\n' "$AGY_LOADER" >&2; return 65; }
-    [ -r "$AGY_RESOLV_CONF" ] || { printf 'agy: resolver source unreadable: %s\n' "$AGY_RESOLV_CONF" >&2; return 66; }
+    [ -x "$AGY_PATCHED" ] || { printf 'patched runtime missing: %s\n' "$AGY_PATCHED" >&2; return 65; }
+    [ -x "$AGY_LOADER" ] || { printf 'loader missing: %s\n' "$AGY_LOADER" >&2; return 65; }
+    [ -r "$AGY_RESOLV_CONF" ] || { printf 'resolver source unreadable: %s\n' "$AGY_RESOLV_CONF" >&2; return 66; }
     return 0
 }
 
@@ -1928,7 +1929,7 @@ agy_light_preflight() {
     agy_cheap_launch_guard || return $?
     agy_load_state
     if agy_needs_repatch; then
-        printf 'agy: runtime drift detected; run "agy setup".\n' >&2
+        printf 'runtime drift detected; run "agy setup".\n' >&2
     fi
     return 0
 }
@@ -2090,7 +2091,7 @@ agy_version_report() {
 
 agy_bootstrap_setup() {
     local tmp_dir
-    tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/agy-install.XXXXXX") || return 1
+    tmp_dir=$(mktemp -d "${TMPDIR:-$AGY_PREFIX/tmp}/agy-install.XXXXXX") || return 1
     trap 'rm -rf "${tmp_dir:-}"' EXIT INT TERM
     git clone --quiet --depth 1 --branch "$AGY_BRANCH" "$AGY_REPO_URL" "$tmp_dir/repo" || return 1
     (cd "$tmp_dir/repo" && AGY_USE_CWD_SOURCE=1 bash ./install.sh)
@@ -2132,9 +2133,9 @@ agy_refresh_wrapper_support() {
     [ "${AGY_DISABLE_WRAPPER_REFRESH:-0}" = "1" ] && return 0
     [ "${AGY_WRAPPER_REFRESHED:-0}" = "1" ] && return 0
     before="$(agy_current_wrapper_version)+$(agy_current_wrapper_commit)"
-    tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/agy-wrapper.XXXXXX") || return 1
+    tmp_dir=$(mktemp -d "${TMPDIR:-$AGY_PREFIX/tmp}/agy-wrapper.XXXXXX") || return 1
     if [ "$display_mode" != "quiet" ]; then
-        printf 'agy: refreshing wrapper support...\n' >&2
+        printf 'refreshing wrapper support...\n' >&2
     fi
     set +e
     git clone --quiet --depth 1 --branch "$AGY_BRANCH" "$AGY_REPO_URL" "$tmp_dir/repo" 2>"$tmp_dir/refresh.log"
@@ -2199,7 +2200,7 @@ agy_refresh_wrapper_and_reexec_if_needed() {
             ;;
         *)
             if [ "$display_mode" != "quiet" ]; then
-                printf 'agy: wrapper refresh failed; keeping current wrapper.\n' >&2
+                printf 'wrapper refresh failed; keeping current wrapper.\n' >&2
             fi
             return 0
             ;;
@@ -2380,9 +2381,9 @@ agy_update_broker_once() {
     if [ "$display_mode" = "quiet" ]; then
         :
     elif [ "$display_mode" = "run" ]; then
-        printf 'agy: checking for updates...\n' >&2
+        printf 'checking for updates...\n' >&2
     else
-        printf 'agy: checking %s update source...\n' "$source_label" >&2
+        printf 'checking %s update source...\n' "$source_label" >&2
     fi
     set +e
     if [ "$network_mode" = "auto" ]; then
@@ -2401,7 +2402,7 @@ agy_update_broker_once() {
     latest=$(agy_manifest_version "$manifest")
     agy_registry_record_current_wrapper
     if [ -z "$latest" ]; then
-        printf 'agy: update manifest did not contain a version.\n' >"$tmp_dir/update.log"
+        printf 'update manifest did not contain a version.\n' >"$tmp_dir/update.log"
         agy_make_case 73 "$tmp_dir/update.log" >/dev/null
         rm -rf "$tmp_dir"
         return 73
@@ -2414,9 +2415,9 @@ agy_update_broker_once() {
         if [ "$display_mode" = "quiet" ]; then
             :
         elif [ "$display_mode" = "run" ]; then
-            printf 'agy: version %s is current.\n' "$latest" >&2
+            printf 'version %s is current.\n' "$latest" >&2
         else
-            printf 'agy: already on upstream version %s.\n' "$latest" >&2
+            printf 'already on upstream version %s.\n' "$latest" >&2
         fi
         rm -rf "$tmp_dir"
         return 0
@@ -2424,11 +2425,11 @@ agy_update_broker_once() {
     agy_set_seen_upstream "$latest"
     agy_load_state
     if [ "$display_mode" = "run" ] && [ "${LAST_FAILED_UPDATE_VERSION:-}" = "$latest" ]; then
-        printf 'agy: update %s is available but not yet verified for Termux.\n' "$latest" >&2
+        printf 'update %s is available but not yet verified for Termux.\n' "$latest" >&2
         if [ -n "${VERIFIED_VERSION:-$current}" ]; then
-            printf 'agy: running verified version %s.\n' "${VERIFIED_VERSION:-$current}" >&2
+            printf 'running verified version %s.\n' "${VERIFIED_VERSION:-$current}" >&2
         fi
-        printf 'agy: run "agy update" to retry the update.\n' >&2
+        printf 'run "agy update" to retry the update.\n' >&2
         rm -rf "$tmp_dir"
         return 0
     fi
@@ -2437,7 +2438,7 @@ agy_update_broker_once() {
     url=$(agy_manifest_field "$manifest" url)
     expected_sha=$(agy_manifest_field "$manifest" sha512)
     if [ -z "$url" ] || [ -z "$expected_sha" ]; then
-        printf 'agy: update manifest missing url or sha512.\n' >"$tmp_dir/update.log"
+        printf 'update manifest missing url or sha512.\n' >"$tmp_dir/update.log"
         agy_make_case 74 "$tmp_dir/update.log" >/dev/null
         rm -rf "$tmp_dir"
         return 74
@@ -2446,9 +2447,9 @@ agy_update_broker_once() {
     if [ "$display_mode" = "quiet" ]; then
         :
     elif [ "$display_mode" = "run" ]; then
-        printf 'agy: installing update %s -> %s...\n' "${current:-unknown}" "$latest" >&2
+        printf 'installing update %s -> %s...\n' "${current:-unknown}" "$latest" >&2
     else
-        printf 'agy: updating official binary %s -> %s from %s...\n' "${current:-unknown}" "$latest" "$source_label" >&2
+        printf 'updating official binary %s -> %s from %s...\n' "${current:-unknown}" "$latest" "$source_label" >&2
     fi
     set +e
     if [ "$network_mode" = "auto" ]; then
@@ -2517,9 +2518,9 @@ agy_update_broker_once() {
         case_dir=$(agy_make_case "$build_status" "$tmp_dir/build.log")
         agy_record_update_failure "$latest" "validation_failed" "$case_dir"
         if [ "$display_mode" != "quiet" ]; then
-            printf 'agy: update %s could not be prepared for Termux.\n' "$latest" >&2
+            printf 'update %s could not be prepared for Termux.\n' "$latest" >&2
             if [ -n "${VERIFIED_VERSION:-$current}" ]; then
-                printf 'agy: keeping verified version %s.\n' "${VERIFIED_VERSION:-$current}" >&2
+                printf 'keeping verified version %s.\n' "${VERIFIED_VERSION:-$current}" >&2
             fi
         fi
         rm -rf "$tmp_dir"
@@ -2541,7 +2542,7 @@ agy_update_broker_once() {
     chmod 755 "$AGY_RAW"
     chmod 755 "$AGY_PATCHED"
     if [ "$display_mode" != "quiet" ]; then
-        printf 'agy: update %s is ready.\n' "$latest" >&2
+        printf 'update %s is ready.\n' "$latest" >&2
     fi
     PATCHED_FROM_ORIGINAL_SHA256="$(agy_sha256 "$AGY_RAW")"
     PATCHED_SHA256="$(agy_sha256 "$AGY_PATCHED")"
@@ -2574,19 +2575,19 @@ agy_update_broker() {
     if [ "$mode" != "explicit" ]; then
         agy_load_state
         if [ -n "${LAST_FAILED_UPDATE_VERSION:-}" ]; then
-            printf 'agy: update %s could not be prepared for Termux.\n' "$LAST_FAILED_UPDATE_VERSION" >&2
+            printf 'update %s could not be prepared for Termux.\n' "$LAST_FAILED_UPDATE_VERSION" >&2
             if [ -n "${VERIFIED_VERSION:-}" ]; then
-                printf 'agy: keeping verified version %s.\n' "$VERIFIED_VERSION" >&2
+                printf 'keeping verified version %s.\n' "$VERIFIED_VERSION" >&2
             fi
-            printf 'agy: run "agy update" to retry the update.\n' >&2
+            printf 'run "agy update" to retry the update.\n' >&2
         else
-            printf 'agy: update check failed; continuing with current runtime copy.\n' >&2
+            printf 'update check failed; continuing with current runtime copy.\n' >&2
         fi
         return 0
     fi
 
     if [ "$mode" = "explicit" ]; then
-        printf 'agy: update failed; keeping the currently installed runtime.\n' >&2
+        printf 'update failed; keeping the currently installed runtime.\n' >&2
     fi
     return "$status"
 }
@@ -2693,31 +2694,31 @@ agy_cleanup_obsolete_runtime_surface() {
 }
 
 agy_remove_run() {
-    printf 'agy remove: removing managed Termux runtime files...\n' >&2
+    printf 'remove: removing managed Termux runtime files...\n' >&2
     agy_remove_managed_launcher "$AGY_PREFIX/bin/agy"
     agy_cleanup_obsolete_runtime_surface
     agy_remove_tree "$AGY_TERMUX_ROOT"
     agy_remove_tree "$AGY_STATE_DIR"
     agy_remove_tree "$AGY_HOME/.local/glibc-shim"
-    printf 'agy remove: completed. OAuth/user Antigravity config outside the managed runtime was not removed.\n' >&2
+    printf 'remove: completed. OAuth/user Antigravity config outside the managed runtime was not removed.\n' >&2
 }
 
 agy_remove() {
     local answer
     if [ "$#" -ne 0 ]; then
-        printf 'agy remove: unexpected argument: %s\n' "$1" >&2
+        printf 'remove: unexpected argument: %s\n' "$1" >&2
         printf 'usage: agy remove\n' >&2
         return 2
     fi
     if [ ! -t 0 ]; then
-        printf 'agy remove: refusing to remove in a non-interactive shell.\n' >&2
+        printf 'remove: refusing to remove in a non-interactive shell.\n' >&2
         return 2
     fi
     printf 'Remove agy managed launcher, runtime, raw binary, state, and obsolete shims? [y/N] ' >&2
     read -r answer || answer=""
     case "$answer" in
         y|Y|yes|YES) ;;
-        *) printf 'agy remove: cancelled.\n' >&2; return 1 ;;
+        *) printf 'cancelled.\n' >&2; return 1 ;;
     esac
     agy_remove_run
 }

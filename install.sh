@@ -28,6 +28,7 @@ AGY_LOG_PREFIX="agy setup"
 AGY_REPO_PATH=""
 AGY_TMP_DIR=""
 export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
+export TMPDIR="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
 
 say() {
     printf '%s: %s\n' "$AGY_LOG_PREFIX" "$*" >&2

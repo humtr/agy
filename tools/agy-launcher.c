@@ -200,6 +200,14 @@ int main(int argc, char **argv) {
     }
     exec_argv[argc + 4] = NULL;
 
+    if (access(runtime_path, X_OK) != 0 || access(loader_path, X_OK) != 0) {
+        if (exec_managed_shell(bash_path, shell_path, argc, argv) < 0) {
+            fprintf(stderr, "agy-launcher: fallback failed after runtime check with %s: %s\n", runtime_path, strerror(errno));
+            return 127;
+        }
+        return 0;
+    }
+
     execv(loader_path, exec_argv);
     if (exec_managed_shell(bash_path, shell_path, argc, argv) < 0) {
         fprintf(stderr, "agy-launcher: fallback failed after loader exec error %s with runtime %s: %s\n", loader_path, runtime_path, strerror(errno));

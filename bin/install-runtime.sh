@@ -119,7 +119,7 @@ agy_write_shell_launcher() {
     agy_prepare_public_launcher_slot
     mkdir -p "$AGY_STATE_DIR"
     cat >"$AGY_STATE_DIR/agy.launcher.$$" <<EOF
-#!/bin/sh
+#!$PREFIX/bin/sh
 # $AGY_MANAGED_LAUNCHER_MARKER
 exec "$AGY_MANAGED_SHELL" "\$@"
 EOF
@@ -151,7 +151,7 @@ agy_install_support_files() {
     local metadata_src wrapper_commit
     metadata_src="$ROOT_DIR/config/wrapper-version.env"
     if [ ! -f "$metadata_src" ]; then
-        printf 'agy install: wrapper metadata missing: %s\n' "$metadata_src" >&2
+        printf 'wrapper metadata missing: %s\n' "$metadata_src" >&2
         return 70
     fi
     mkdir -p "$AGY_RUNTIME_DIR" "$AGY_STATE_DIR"
