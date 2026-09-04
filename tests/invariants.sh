@@ -53,6 +53,7 @@ require_file tests/metadata-fail-closed.sh
 require_file tests/obsolete-cleanup.sh
 require_file tests/launcher-auth-route.sh
 require_file tests/installed-runtime-isolation.sh
+require_file tests/raw-changed-rebuild.sh
 require_file tests/run-all.sh
 
 require_executable install.sh
@@ -64,6 +65,7 @@ require_executable tests/metadata-fail-closed.sh
 require_executable tests/obsolete-cleanup.sh
 require_executable tests/launcher-auth-route.sh
 require_executable tests/installed-runtime-isolation.sh
+require_executable tests/raw-changed-rebuild.sh
 require_executable tests/invariants.sh
 require_executable tests/run-all.sh
 
@@ -101,10 +103,12 @@ require_grep 'tests/metadata-fail-closed\.sh' tests/run-all.sh 'metadata test in
 require_grep 'tests/obsolete-cleanup\.sh' tests/run-all.sh 'obsolete cleanup test in run-all'
 require_grep 'tests/installed-runtime-isolation\.sh' tests/run-all.sh 'installed runtime isolation test in run-all'
 require_grep 'tests/launcher-auth-route\.sh' tests/run-all.sh 'launcher-auth-route in run-all'
+require_grep 'tests/raw-changed-rebuild\.sh' tests/run-all.sh 'raw-changed-rebuild in run-all'
 require_grep 'tests/invariants\.sh' tests/run-all.sh 'invariants in run-all'
 reject_grep 'AGY_MANAGED_REPO_LIB' bin/install-runtime.sh docs 'managed shell must not source development checkout lib'
 reject_grep 'AGY_INSTALLED_REPO_ROOT' bin/install-runtime.sh docs 'managed shell must not record development checkout root'
 require_grep 'sources only the installed runtime support copy' docs/AGY_TERMUX_LAUNCHER.md 'installed runtime support isolation docs'
 require_grep 'installed-runtime-isolation: ok' tests/installed-runtime-isolation.sh 'installed runtime isolation focused test'
+require_grep 'raw-changed-rebuild: ok' tests/raw-changed-rebuild.sh 'raw-changed-rebuild focused test'
 
 pass

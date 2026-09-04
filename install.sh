@@ -97,7 +97,7 @@ prepare_repo() {
         fail 'AGY_USE_CWD_SOURCE must be 0 or 1'
     fi
 
-    AGY_TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/agy-install.XXXXXX")" || fail 'failed to create temporary directory'
+    AGY_TMP_DIR="$(mktemp -d "${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}/agy-install.XXXXXX")" || fail 'failed to create temporary directory'
     trap 'rm -rf "$AGY_TMP_DIR"' EXIT INT TERM
     say "cloning $AGY_REPO_URL"
     git clone --quiet --depth 1 --branch "$AGY_BRANCH" "$AGY_REPO_URL" "$AGY_TMP_DIR/repo" \

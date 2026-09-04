@@ -17,6 +17,7 @@ tests/metadata-fail-closed.sh
 tests/obsolete-cleanup.sh
 tests/launcher-auth-route.sh
 tests/installed-runtime-isolation.sh
+tests/raw-changed-rebuild.sh
 tests/invariants.sh
 tests/run-all.sh
 LIST
@@ -39,6 +40,9 @@ bash tests/installed-runtime-isolation.sh
 
 printf 'run-all: launcher-auth-route\n'
 bash tests/launcher-auth-route.sh
+
+printf 'run-all: raw-changed-rebuild\n'
+bash tests/raw-changed-rebuild.sh
 
 printf 'run-all: invariants\n'
 bash tests/invariants.sh
