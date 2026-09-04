@@ -1279,7 +1279,7 @@ agy_run_bare_runtime() {
         printf 'agy: raw changed during execution; rebuilding runtime copy.\n' >&2
         agy_rebuild_runtime postflight-update
     fi
-    if [ "$exit_code" -eq 0 ]; then
+    if [ "$exit_code" -eq 0 ] || [ "$exit_code" -eq 130 ]; then
         agy_mark_runtime_success "$(agy_current_version 2>/dev/null || true)"
     fi
     if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 130 ]; then
@@ -1311,7 +1311,7 @@ agy_run_selected_runtime() {
         printf 'agy: raw changed during execution; rebuilding runtime copy.\n' >&2
         agy_rebuild_runtime postflight-update
     fi
-    if [ "$exit_code" -eq 0 ]; then
+    if [ "$exit_code" -eq 0 ] || [ "$exit_code" -eq 130 ]; then
         agy_mark_runtime_success "$(agy_current_version 2>/dev/null || true)"
     fi
     if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 130 ]; then
@@ -2095,6 +2095,36 @@ agy_bootstrap_setup() {
     (cd "$tmp_dir/repo" && AGY_USE_CWD_SOURCE=1 bash ./install.sh)
 }
 
+agy_wrapper_version_is_newer() {
+    local target_ver="$1" before_ver="$2"
+    python3 - "$target_ver" "$before_ver" <<'PY'
+import re
+import sys
+
+def parse_key(v):
+    if not v or v == "unknown":
+        return []
+    parts = re.split(r"[.+-]", v)
+    out = []
+    for p in parts:
+        out.append((0, int(p)) if p.isdigit() else (1, p))
+    return out
+
+t_ver = sys.argv[1] if len(sys.argv) > 1 else ""
+b_ver = sys.argv[2] if len(sys.argv) > 2 else ""
+
+if not t_ver or t_ver == "unknown":
+    sys.exit(1)
+
+t_key = parse_key(t_ver)
+b_key = parse_key(b_ver)
+
+if t_key > b_key:
+    sys.exit(0)
+sys.exit(1)
+PY
+}
+
 agy_refresh_wrapper_support() {
     local display_mode="${1:-quiet}"
     local before after tmp_dir status target_version target_commit target
@@ -2123,7 +2153,7 @@ agy_refresh_wrapper_support() {
     )"
     target_commit="$(git -C "$tmp_dir/repo" rev-parse --short=6 HEAD 2>/dev/null || printf 'unknown\n')"
     target="$target_version+$target_commit"
-    if [ "$target" = "$before" ]; then
+    if [ "$target" = "$before" ] || ! agy_wrapper_version_is_newer "$target_version" "$(agy_current_wrapper_version)"; then
         rm -rf "$tmp_dir"
         set -e
         return 0
